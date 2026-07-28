@@ -27,6 +27,13 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 - ☐ `jetstream2` (OpenStack / ACCESS) adapter
 - ☐ `pegasus` adapter
 - ☐ Multi-provider policy selection
+- ☐ Planner P1: telemetry policy with predictive pre-provisioning (`specs/06`)
+
+## M5 — LLM allocation planner (post-pilot)
+- ☐ Planner P2: LLM plans validated by the deterministic plan checker
+- ☐ Shadow scoring against P1; promotion by non-inferiority gate
+- ☐ Operations lane through Portage (system telemetry only); decision log;
+  confirm thresholds; kill switch
 
 > Dates intentionally omitted until the MVP consumer is fixed (`specs/05`,
 > open question in `DESIGN.md §8`). Sequence is firmer than calendar here.

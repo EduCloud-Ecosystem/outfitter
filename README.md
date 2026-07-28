@@ -34,6 +34,11 @@ Outfitter targets that gap:
   reporting and F&A conversations.
 - **Privacy-minimal.** Outfitter stores usage and cost metadata, never student
   records — the same stance as the rest of EduCloud.
+- **AI-managed allocation, staged.** A planner with system-level knowledge
+  (ledger, telemetry, budgets, course calendar) chooses and swaps providers
+  inside the budget envelope: deterministic rules first, an LLM stage after
+  the classroom pilot, each stage promoted only by shadow scoring
+  (`specs/06`).
 
 ## Where it sits
 
@@ -57,7 +62,7 @@ not Outfitter's — Outfitter provisions machines, not model calls.
 |---|---|
 | `DESIGN.md` | Architecture, the broker/adapter model, the stack decision, non-goals. Start here. |
 | `specs/00-overview.md` | The problem, the actors, and the MVP cut. |
-| `specs/01`–`05` | Adapter interface, cost model, budget/quota guards, Cairn integration, MVP scope. |
+| `specs/01`–`06` | Adapter interface, cost model, budget/quota guards, Cairn integration, MVP scope, and the allocation planner (AI-managed compute in three gated stages). |
 | `KICKOFF-PROMPT.md` | The prompt to open a Claude Code build session. |
 | `HANDOFF.md` | Build phases, acceptance criteria, standing rules. |
 

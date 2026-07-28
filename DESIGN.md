@@ -32,6 +32,10 @@ them without relearning the model.
   provisions through that provider's adapter, and returns a handle.
 - **Reaper** enforces lifetime/idle/teardown and budget ceilings out of band.
 - **Ledger** records usage events and computes normalized cost for reporting.
+- **Planner** (staged; `specs/06`) decides placements, swaps, and
+  pre-provisioning from system-level knowledge (ledger, telemetry, budgets,
+  course calendar). It acts only through the broker API, inside the budget
+  and policy envelope, with every decision logged.
 
 Core lifecycle: `Estimate → Provision → Status(poll) → Teardown`, with `Cost`
 observable throughout and a hard `Reap` path that can teardown from outside the
@@ -100,3 +104,16 @@ not the core.
 - Does Outfitter own a persistent ledger DB, or emit events to a shared EduCloud
   store? (Privacy-minimal either way.)
 - How much of `compute-cost-simulator` transfers directly vs. informs a rewrite?
+
+## 9. Allocation intelligence
+
+Resource management is an AI role in this platform, by design. The planner
+(`specs/06`) holds system-level knowledge and swaps resources automatically:
+provider choice from live telemetry, workload migration when conditions
+change, pre-provisioning ahead of course deadlines, allocation pacing across
+a term. It runs in three gated stages (static policy, telemetry policy, LLM
+planner), each promoted only after beating the previous stage in shadow on
+cost per verified run and deadline adherence. The envelope stays
+deterministic and outside the planner's reach: budget ceilings, lifetimes,
+teardown, policy modes, an append-only decision log, human confirmation above
+thresholds, and a kill switch back to the previous stage.
