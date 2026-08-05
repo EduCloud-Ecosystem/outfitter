@@ -14,5 +14,4 @@ Outfitter provisions and brokers compute; it stores usage and cost metadata, nev
 student records. Any data-handling terms inherit the EduCloud privacy-minimal
 stance defined at the ecosystem level.
 
-> Status: in force, 2026-08-05. Entity/IP specifics (nonprofit holder,
-> trademark) are resolved at the ecosystem level and are not re-litigated here.
+> Status: in force, 2026-08-05.
