@@ -52,9 +52,12 @@ Prompt shape: real title; italicized context line (what's known/verified vs.
 what this prompt resolves); numbered sections; closing numbered **Report**
 section (never omit) covering anything unverified or diverged.
 
-No `Co-Authored-By: Claude` trailers in commits (`git log -5 | grep -c
-Co-Authored-By` → `0`) — separate from the DCO sign-off requirement above,
-which stays. New commits over amends; no force-push unasked.
+No `Co-Authored-By: Claude` trailers in commits — separate from the DCO
+sign-off requirement above, which stays. Check actual trailers, not prose:
+`git log -5 --format='%(trailers:key=Co-Authored-By)'` should print nothing
+— a plain `grep -c Co-Authored-By` over the log can false-positive on prose
+describing the convention (caught in Cairn by CC-CA5, 2026-08-09). New
+commits over amends; no force-push unasked.
 
 Where things are: `../educloud/SYSTEM.md` (shared contracts),
 `../educloud/DOCUMENTATION.md` (doc index + CC-* tracker). `specs/08`
