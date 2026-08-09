@@ -1,74 +1,63 @@
-# EduCloud ecosystem — shared conventions
+# CLAUDE.md — operating instructions for Outfitter
 
-This repo (`outfitter`) is the compute broker of the EduCloud ecosystem, an
-open-source GitHub Classroom replacement. Siblings: `cairn` (classroom/LMS),
-`belay` (AI tutor), `portage` (LLM routing engine), `waypoint`
-(hosting/identity), `educloud` (umbrella strategy/decisions/SYSTEM.md).
-`portage-local` is a separate personal deployment, currently on hold — not
-part of this ecosystem's active work.
+Outfitter is the **compute-provisioning & brokering layer** of EduCloud. Read
+`DESIGN.md` and `specs/00-overview.md` before writing code.
 
-## The platform invariant
+## Standing rules
+- **Spec before code.** Behavior changes start in `specs/`, then implementation.
+- **Go.** Single module, standard layout. Keep the core provider-agnostic; provider
+  quirks live inside that provider's adapter only.
+- **Budget-safe by default.** No provisioning path without a ceiling, a lifetime,
+  and a teardown path. The reaper must be able to teardown out of band.
+- **Privacy-minimal.** Usage + cost metadata only. Never student records.
+- **Adapters ship with a conformance test** against the interface contract.
+- **DCO sign-off** on every commit (`git commit -s`). Apache-2.0.
 
-No component trusts a model's — or a provider's — self-report. A
-deterministic check decides success, always. Before citing a vendor's claim
-(pricing, precision, model catalog, uptime, API behavior, allocation terms)
-as fact in a doc or a decision, verify it against the live API/service or the
-program's own documentation, not a summary of it. This matters here
-specifically for ACCESS/Jetstream2 allocation terms and ally-cloud pricing —
-get those from the program's current docs, not memory.
+## Layout (target)
+```
+cmd/outfitter/         entrypoint (CLI + server)
+internal/broker/       placement: estimate → provision → status → teardown
+internal/provider/     adapter interface + docker|codespaces|hpc|jetstream2|pegasus
+internal/policy/       budget, quota, lifetime, idle-reap
+internal/cost/         normalized unit, rate cards, attribution, reports
+specs/                 the reasoning record (00–05, extend as you go)
+```
 
-## The CC-* prompt namespace — check before you number
+## Definition of done for a change
+Spec updated · code + tests · adapter conformance green (if provider) · budget guard
+covered · `git commit -s`.
 
-Claude Code prompts across all six repos share one numbering namespace:
-`CC-P*` (Portage), `CC-CA*` (Cairn), `CC-B*` (Belay), `CC-O*` (Outfitter —
-this repo), `CC-W*` (Waypoint), `CC-HB*`/`CC-C*` (historical, closed
-series). **A number means one thing platform-wide — collisions have
-happened twice already** (CC-P9/P10 reused by accident, CC-C1 reused by
-accident). Before creating a new prompt:
+## EduCloud ecosystem — shared conventions
 
-1. Read `../educloud/DOCUMENTATION.md`'s "Prompt-number namespace" section
-   for the next free number in your series (find the actual path — it's a
-   sibling directory, don't assume the relative path is exactly `../educloud`
-   without checking).
-2. Also check this repo's own `docs/prompts/` directory directly — the
-   registry can drift; the directory listing is ground truth.
-3. Use one higher than the max of both, then update the registry.
+Outfitter's siblings: `cairn` (classroom/LMS), `belay` (AI tutor), `portage`
+(LLM routing engine), `waypoint` (hosting/identity), `educloud` (umbrella
+strategy/SYSTEM.md). `portage-local` is a separate personal deployment, on
+hold, not part of this ecosystem's active work.
 
-The `/new-cc-prompt` custom command in this repo does steps 1-3
-automatically — prefer it over doing this by hand.
+**Platform invariant:** no component trusts a vendor's self-report. Verify
+pricing/precision/catalog/uptime/allocation-terms claims against the live
+API/service or the program's own current docs before writing them into a
+decision — this applies here especially to ACCESS/Jetstream2 allocation
+terms and ally-cloud pricing.
 
-Prompt files live in `docs/prompts/CC-<series><n>-<slug>.md` and follow this
-shape: a real title (not a placeholder); an italicized context block
-(`*Claude Code prompt. Authored [where/when], from [what triggered this —
-a finding, an instruction, a prior prompt's report]`) stating plainly what's
-already known/verified and what this prompt needs to resolve; numbered
-sections (what to read first, what to do, in dependency order); a closing
-numbered **Report** section listing exactly what the executor must report
-back — including anything that diverged from the happy path or couldn't be
-verified. Never omit the Report section.
+**CC-* prompt namespace** (`CC-O*` here, plus `CC-P*`/`CC-CA*`/`CC-B*`/
+`CC-W*` in siblings, `CC-HB*`/`CC-C*` historical) is shared platform-wide —
+two real collisions have happened (CC-P9/P10, CC-C1). Before numbering a
+new prompt: read `../educloud/DOCUMENTATION.md`'s namespace tracker, cross-
+check this repo's own `docs/prompts/` directory (ground truth over the
+registry), use one higher than the max of both, update the registry. The
+`/new-cc-prompt` command does this automatically.
 
-## Git conventions
+Prompt shape: real title; italicized context line (what's known/verified vs.
+what this prompt resolves); numbered sections; closing numbered **Report**
+section (never omit) covering anything unverified or diverged.
 
-- No `Co-Authored-By: Claude` trailers in this repo's commits. If unsure,
-  `git log -5 | grep -c Co-Authored-By` should return `0`.
-- Prefer new commits over amends; never force-push without being asked.
+No `Co-Authored-By: Claude` trailers in commits (`git log -5 | grep -c
+Co-Authored-By` → `0`) — separate from the DCO sign-off requirement above,
+which stays. New commits over amends; no force-push unasked.
 
-## Where things are
-
-- `../educloud/SYSTEM.md` — the eleven shared platform contracts every
-  module implements against
-- `../educloud/DOCUMENTATION.md` — the full doc index and the CC-* namespace
-  tracker
-- `DESIGN.md` — the broker/adapter model, Go stack rationale, and §9's
-  allocation intelligence
-- `ROADMAP.md` — M0–M5, plus the M1.5 and 2026-08-08 build-vs-integrate
-  triage and ACCESS path; this is also where the Explore-vs-Discover ACCESS
-  sequencing note lives (kept in sync with `educloud/DOCUMENTATION.md`'s
-  known-gaps list — don't let the two drift apart again)
-- `specs/00–06` — adapter interface, cost model, budget guards, Cairn
-  integration, MVP scope, allocation planner
-- `specs/08` — isolation tiers for untrusted student code. This one is
-  **platform-level**, not broker-only: Cairn and Belay both consume it.
-  `specs/07` is reserved (endpoint manifest, SYSTEM.md contract 9) — don't
-  claim that number for anything else
-- `docs/prompts/CC-O1` — prompt executed so far
+Where things are: `../educloud/SYSTEM.md` (shared contracts),
+`../educloud/DOCUMENTATION.md` (doc index + CC-* tracker). `specs/08`
+(isolation tiers) is platform-level, not broker-only — Cairn and Belay both
+consume it; `specs/07` is reserved for the endpoint manifest, don't claim it
+for anything else.
