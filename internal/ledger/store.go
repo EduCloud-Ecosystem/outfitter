@@ -28,10 +28,11 @@ type Project struct {
 	Budget int64  `json:"budget_cpu_seconds"`
 }
 type Data struct {
-	Version  int                        `json:"version"`
-	Owner    string                     `json:"owner"`
-	Projects map[string]Project         `json:"projects"`
-	Runs     map[string]provider.Record `json:"runs"`
+	Version   int                        `json:"version"`
+	Owner     string                     `json:"owner"`
+	Authority *Authority                 `json:"authority,omitempty"`
+	Projects  map[string]Project         `json:"projects"`
+	Runs      map[string]provider.Record `json:"runs"`
 }
 type Store struct{ Dir string }
 type Usage struct {
@@ -69,8 +70,20 @@ func Open(dir string, create bool) (*Store, error) {
 	e = s.lock(func() error {
 		path := filepath.Join(p, "ledger.json")
 		if _, e := os.Lstat(path); e == nil {
-			_, e = s.read()
-			return e
+			d, e := s.read()
+			if e != nil {
+				return e
+			}
+			if d.Version == 1 {
+				id, e := randomID()
+				if e != nil {
+					return e
+				}
+				d.Version = 2
+				d.Authority = &Authority{ID: id, StatePath: p, Admission: "active"}
+				return s.write(d)
+			}
+			return nil
 		} else if !os.IsNotExist(e) {
 			return e
 		}
@@ -91,7 +104,11 @@ func Open(dir string, create bool) (*Store, error) {
 		if _, e = rand.Read(b[:]); e != nil {
 			return e
 		}
-		return s.write(Data{1, hex.EncodeToString(b[:]), map[string]Project{}, map[string]provider.Record{}})
+		id, e := randomID()
+		if e != nil {
+			return e
+		}
+		return s.write(Data{Version: 2, Owner: hex.EncodeToString(b[:]), Authority: &Authority{ID: id, StatePath: p, Admission: "active"}, Projects: map[string]Project{}, Runs: map[string]provider.Record{}})
 	})
 	return s, e
 }
@@ -133,11 +150,17 @@ func (s *Store) read() (Data, error) {
 	if e = validate(d); e != nil {
 		return d, e
 	}
+	if d.Version == 2 && d.Authority.StatePath != s.Dir {
+		return d, errors.New("ledger belongs to a different state path; use held restore")
+	}
 	return d, nil
 }
 func validate(d Data) error {
-	if d.Version != 1 || len(d.Owner) != 32 || d.Projects == nil || d.Runs == nil || len(d.Projects) > MaxProjects || len(d.Runs) > MaxRecords {
+	if (d.Version != 1 && d.Version != 2) || len(d.Owner) != 32 || d.Projects == nil || d.Runs == nil || len(d.Projects) > MaxProjects || len(d.Runs) > MaxRecords {
 		return errors.New("incomplete or over-capacity ledger")
+	}
+	if e := validateAuthority(d); e != nil {
+		return e
 	}
 	if decoded, e := hex.DecodeString(d.Owner); e != nil || len(decoded) != 16 {
 		return errors.New("invalid ledger owner")
@@ -200,6 +223,9 @@ func (s *Store) write(d Data) error {
 	// an unreferenced blob, never an authority record requiring missing diagnostics.
 	if e := validate(d); e != nil {
 		return e
+	}
+	if d.Version == 2 && d.Authority.StatePath != s.Dir {
+		return errors.New("authority path mismatch")
 	}
 	compact := d
 	compact.Runs = make(map[string]provider.Record, len(d.Runs))
@@ -295,6 +321,9 @@ func (s *Store) InitProject(id string, budget int64) (Usage, error) {
 		return out, errors.New("invalid project ID or finite budget")
 	}
 	e := s.Update(func(d *Data) error {
+		if e := RequireAdmission(*d); e != nil {
+			return e
+		}
 		if _, ok := d.Projects[id]; !ok && len(d.Projects) >= MaxProjects {
 			return errors.New("project metadata capacity exhausted")
 		}

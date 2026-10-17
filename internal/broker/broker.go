@@ -50,6 +50,9 @@ func (b *Broker) Reserve(w provider.Request) (provider.Record, bool, error) {
 		return r, false, errors.New("required provider capability not declared")
 	}
 	e = b.Store.Update(func(d *ledger.Data) error {
+		if e := ledger.RequireAdmission(*d); e != nil {
+			return e
+		}
 		if old, ok := d.Runs[w.RequestID]; ok {
 			if old.PayloadHash != w.Hash() {
 				return errors.New("request ID payload collision")
@@ -104,9 +107,14 @@ func (b *Broker) change(id string, fn func(*provider.Record)) (provider.Record, 
 	return r, e
 }
 func (b *Broker) Run(ctx context.Context, w provider.Request) (provider.Receipt, error) {
+	release, leaseErr := b.Store.ExecutionLease()
+	if leaseErr != nil {
+		return provider.Receipt{}, leaseErr
+	}
+	defer release()
 	r, fresh, e := b.Reserve(w)
 	if e != nil {
-		if errors.Is(e, ErrBudget) {
+		if errors.Is(e, ErrBudget) || errors.Is(e, ledger.ErrAdmission) {
 			return provider.Receipt{SchemaVersion: 1, RequestID: w.RequestID, ProjectID: w.ProjectID, Status: "failed", Error: e.Error(), CleanupVerified: true, Image: w.Image, Compute: provider.Compute{Provenance: "not_admitted"}}, nil
 		}
 		return r.Receipt, e
