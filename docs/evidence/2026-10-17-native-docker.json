@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "timestamp": "2026-10-17T22:22:10.359854+00:00",
+  "image": "python@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36",
+  "checks": [
+    {
+      "name": "project-init returns JSON success",
+      "passed": true
+    },
+    {
+      "name": "run returns JSON success",
+      "passed": true
+    },
+    {
+      "name": "known result and nonroot user",
+      "passed": true
+    },
+    {
+      "name": "completion cleanup and conservative charge",
+      "passed": true
+    },
+    {
+      "name": "run returns JSON success",
+      "passed": true
+    },
+    {
+      "name": "duplicate returns original receipt",
+      "passed": true
+    },
+    {
+      "name": "project-status returns JSON success",
+      "passed": true
+    },
+    {
+      "name": "duplicate charged only once",
+      "passed": true
+    },
+    {
+      "name": "run returns JSON success",
+      "passed": true
+    },
+    {
+      "name": "bounded combined output",
+      "passed": true
+    },
+    {
+      "name": "run returns JSON success",
+      "passed": true
+    },
+    {
+      "name": "deadline cleanup",
+      "passed": true
+    },
+    {
+      "name": "Docker containment flags observed",
+      "passed": true
+    },
+    {
+      "name": "cancel returns JSON success",
+      "passed": true
+    },
+    {
+      "name": "operator cancel cleanup",
+      "passed": true
+    },
+    {
+      "name": "status returns JSON success",
+      "passed": true
+    },
+    {
+      "name": "status returns JSON success",
+      "passed": true
+    },
+    {
+      "name": "status returns JSON success",
+      "passed": true
+    },
+    {
+      "name": "watchdog survives broker SIGKILL",
+      "passed": true
+    },
+    {
+      "name": "fresh observer verifies killed-broker resource absent",
+      "passed": true
+    },
+    {
+      "name": "project-init returns JSON success",
+      "passed": true
+    },
+    {
+      "name": "run returns JSON success",
+      "passed": true
+    },
+    {
+      "name": "budget refused before admission",
+      "passed": true
+    },
+    {
+      "name": "project-init returns JSON success",
+      "passed": true
+    },
+    {
+      "name": "separate processes cannot double reserve remaining budget",
+      "passed": true
+    },
+    {
+      "name": "project-status returns JSON success",
+      "passed": true
+    },
+    {
+      "name": "cross-process budget exhausted exactly once per reservation",
+      "passed": true
+    }
+  ],
+  "passed": 27,
+  "provider_self_expiry": "unsupported: supervised external watchdog exception only",
+  "limitations": [
+    "No Jetstream2 or other live provider acceptance",
+    "No host/watchdog/Docker-daemon loss self-expiry",
+    "CPU allowance conservatively charged; actual CPU not measured"
+  ]
+}

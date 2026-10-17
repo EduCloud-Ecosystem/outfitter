@@ -145,3 +145,13 @@ included. Kubernetes remains an optional future evaluation; PAIR adds no depende
    Reconcile provider reporting when available; otherwise retain the reservation.
    Report simulation, same-host process recovery, independent-host observation,
    live provider behavior and settled usage as separate evidence categories.
+
+## Recorded acceptance
+
+The [machine-readable acceptance record](evidence/2026-10-17-native-su-cleanup.json)
+pins the implementation revision, tests, same-host fault evidence, Docker exercise
+and unresolved live gates. Actual Docker execution passed 27 checks; actual local
+checkpoint/restore passed 38. The final native-package race suite passed 44 tests
+including subtests. The source/fault-model review was performed by the implementing
+agent; it is not an independent review. CI retains its JSON test log alongside the
+Docker/recovery artifacts for the exact submitted revision.

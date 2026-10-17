@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-17",
+  "implementation_commit": "900dc88a669172fc564714474e01e5c5774b1087",
+  "accepted_base_commit": "abfcfa280a0982e03b80a50e0349a5ef99a13a41",
+  "environment": {
+    "os": "Darwin",
+    "architecture": "arm64",
+    "go": "go version go1.26.4 darwin/arm64",
+    "docker": "29.8.2",
+    "provider": "local HTTPS OpenStack simulator",
+    "credentials": "synthetic fixture only"
+  },
+  "verification": {
+    "whole_repository_race_tests_before_final_native_only_review_fixes": {
+      "passed_tests": 106,
+      "failed_tests": [],
+      "skipped_tests": [
+        "TestDockerLifecycleConformance",
+        "TestProviderSelfExpiryNotClaimed"
+      ],
+      "log_sha256": "fd659503fa6abf1e29ec0729431bb9a158a6acb2f455d9ffb6a554f2cae1b7e2"
+    },
+    "final_native_package_race_tests": {
+      "passed_tests": 44,
+      "failed_tests": [],
+      "skipped_tests": [],
+      "log_sha256": "4691d833858919e4892e469fdf88f37ab05c13ad9ebf5db31dd12e294b273759"
+    },
+    "go_vet": "PASS",
+    "gofmt": "PASS",
+    "git_diff_check": "PASS",
+    "docker_lifecycle": {
+      "result": "PASS",
+      "checks": 27,
+      "evidence": "2026-10-17-native-docker.json"
+    },
+    "local_checkpoint_restore": {
+      "result": "PASS",
+      "checks": 38,
+      "elapsed_seconds": 8.719,
+      "evidence": "2026-10-17-native-recovery.json"
+    }
+  },
+  "scope_note": "Final native-only review fixes and the settled-native-cutover test were rechecked with the final native-package race suite. Docker and local recovery source paths were unchanged after their actual runtime exercises. CI will verify the full submitted revision.",
+  "acceptance": [
+    {
+      "criterion": "atomic native reservation and concurrency one",
+      "result": "PASS",
+      "test": "TestNativeAdmissionAndSettlement",
+      "evidence_class": "simulation; separate local process where named"
+    },
+    {
+      "criterion": "immutable request/configuration/budget and held restore",
+      "result": "PASS",
+      "test": "TestNativeHeldRestoreAndPolicy",
+      "evidence_class": "simulation; separate local process where named"
+    },
+    {
+      "criterion": "lost port and server create responses",
+      "result": "PASS",
+      "test": "TestDurableFaultRecovery/lost-port; TestDurableFaultRecovery/lost-server",
+      "evidence_class": "simulation; separate local process where named"
+    },
+    {
+      "criterion": "late port after ambiguous absence",
+      "result": "PASS",
+      "test": "TestDurableFaultRecovery/late-port",
+      "evidence_class": "simulation; separate local process where named"
+    },
+    {
+      "criterion": "requester and worker loss",
+      "result": "PASS",
+      "test": "TestDurableFaultRecovery/requester-loss; TestDurableFaultRecovery/worker-loss",
+      "evidence_class": "simulation; separate local process where named"
+    },
+    {
+      "criterion": "creator SIGKILL after provider effect, separate cleanup process",
+      "result": "PASS",
+      "test": "TestCleanupAfterCreatorSIGKILLInSeparateProcess",
+      "evidence_class": "simulation; separate local process where named"
+    },
+    {
+      "criterion": "API loss and partial deletion with retry",
+      "result": "PASS",
+      "test": "TestDurableFaultRecovery/api-loss; TestDurableFaultRecovery/partial-delete",
+      "evidence_class": "simulation; separate local process where named"
+    },
+    {
+      "criterion": "duplicate and foreign resources refuse deletion",
+      "result": "PASS",
+      "test": "TestDurableFaultRecovery/duplicate-effect; TestDurableFaultRecovery/foreign-resource",
+      "evidence_class": "simulation; separate local process where named"
+    },
+    {
+      "criterion": "incomplete/paginated inventory and retained storage refusal",
+      "result": "PASS",
+      "test": "TestNativeCleanupRefusesIncompleteInventoryAndUnexpectedStorage",
+      "evidence_class": "simulation; separate local process where named"
+    },
+    {
+      "criterion": "expired approval and concurrent effect locking",
+      "result": "PASS",
+      "test": "TestNativeExpiredApprovalRefusesEffects; TestNativeEarlySupervisorAndEffectLock",
+      "evidence_class": "simulation; separate local process where named"
+    },
+    {
+      "criterion": "separate cumulative observations, settled charges and local CPU units",
+      "result": "PASS",
+      "test": "TestNativeObservationsDoNotSettleOrRefund; TestNativeAdmissionAndSettlement",
+      "evidence_class": "simulation; separate local process where named"
+    },
+    {
+      "criterion": "stale effect save and corrupt state refusal",
+      "result": "PASS",
+      "test": "TestNativeExpiredPermitAndCorruptState",
+      "evidence_class": "simulation; separate local process where named"
+    },
+    {
+      "criterion": "settled native allowance survives fenced cutover",
+      "result": "PASS",
+      "test": "TestNativeSettledCutoverPreservesAllowance",
+      "evidence_class": "simulation; separate local process where named"
+    }
+  ],
+  "review": {
+    "kind": "implementing-agent source and fault-model review, not independent review",
+    "resolved": [
+      "native map initialization after JSON reopen",
+      "shared ledger metadata capacity across units",
+      "project-scoped native allowance cannot reset by changing network/image",
+      "durable attempt markers and exact reservation-token discovery",
+      "duplicate/foreign/incomplete inventory refusal before deletion",
+      "separate observation and settlement provenance",
+      "settled allowance preserved by cutover"
+    ],
+    "remaining_blocking_code_findings": []
+  },
+  "remaining_gates": [
+    {
+      "item": "allocation selection, CPU entitlement, balance, quota and capacity",
+      "result": "NOT RUN"
+    },
+    {
+      "item": "live pinned image/network preflight",
+      "result": "NOT RUN"
+    },
+    {
+      "item": "actual independent supervisor host/control-plane failure",
+      "result": "NOT RUN"
+    },
+    {
+      "item": "live provider create, workload and independently observed teardown",
+      "result": "NOT RUN"
+    },
+    {
+      "item": "provider-reported native settlement",
+      "result": "NOT RUN"
+    },
+    {
+      "item": "synthetic Waypoint/Cairn handoff after live acceptance",
+      "result": "NOT RUN"
+    }
+  ],
+  "limitations": [
+    "No provider-native expiry or hard SU cap during API/host/supervisor outage",
+    "One private local filesystem; no shared/network ledger or remote fencing",
+    "Ambiguous creation never automatically settles, even after cleanup",
+    "Incomplete or paginated inventory refuses cleanup",
+    "Settlement evidence digest is an operator assertion; retain and review source evidence separately",
+    "Public/synthetic data only; no private/student data",
+    "No live provider resource, paid dependency, deployment, Kubernetes or PAIR dependency"
+  ],
+  "proposed_live_manifest": "../manifests/jetstream2-live-test.proposed.json"
+}
