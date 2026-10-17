@@ -7,8 +7,59 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
+	"time"
 )
+
+func TestRecoverySpecialFilesRefusedWithoutBlocking(t *testing.T) {
+	for _, name := range []string{"manifest.json", "ledger.json", "output.json"} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), name)
+			if e := syscall.Mkfifo(path, 0600); e != nil {
+				t.Fatal(e)
+			}
+			done := make(chan error, 1)
+			go func() { _, e := readBounded(path, 1024); done <- e }()
+			select {
+			case e := <-done:
+				if e == nil {
+					t.Fatal("FIFO accepted as a regular checkpoint file")
+				}
+			case <-time.After(time.Second):
+				t.Fatal("special file blocked before validation")
+			}
+		})
+	}
+	if _, e := readBounded(os.DevNull, 1024); e == nil {
+		t.Fatal("device accepted as a checkpoint file")
+	}
+}
+
+func TestRecoveryRestoreRefusesFIFOManifestWithoutCreatingDestination(t *testing.T) {
+	root := t.TempDir()
+	checkpoint := filepath.Join(root, "checkpoint")
+	if e := os.Mkdir(checkpoint, 0700); e != nil {
+		t.Fatal(e)
+	}
+	if e := syscall.Mkfifo(filepath.Join(checkpoint, "manifest.json"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	destination := filepath.Join(root, "replacement")
+	done := make(chan error, 1)
+	go func() { _, e := Restore(destination, checkpoint, strings.Repeat("a", 64)); done <- e }()
+	select {
+	case e := <-done:
+		if e == nil {
+			t.Fatal("restore accepted FIFO manifest")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("restore blocked on FIFO manifest")
+	}
+	if _, e := os.Stat(destination); !os.IsNotExist(e) {
+		t.Fatal("invalid checkpoint created destination", e)
+	}
+}
 
 func recoveryFixture(t *testing.T) (*Store, string, RecoveryReport, *Store) {
 	t.Helper()

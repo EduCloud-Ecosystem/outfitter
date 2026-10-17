@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "timestamp": "2026-10-17T21:58:33.169916+00:00",
+  "image": "python@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36",
+  "checks": [
+    {
+      "name": "project-init returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "run returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "real pre-cutover run completed and cleaned up",
+      "passed": true
+    },
+    {
+      "name": "checkpoint returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "recovery-status returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "checkpoint matches current accounting authority",
+      "passed": true
+    },
+    {
+      "name": "restore returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "restored authority is held with original allowance",
+      "passed": true
+    },
+    {
+      "name": "private recovery directories",
+      "passed": true
+    },
+    {
+      "name": "status returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "completed receipt and diagnostic bytes survive restore",
+      "passed": true
+    },
+    {
+      "name": "run returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "held duplicate request cannot execute",
+      "passed": true
+    },
+    {
+      "name": "project-init refuses safely",
+      "passed": true
+    },
+    {
+      "name": "project-init returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "activate refuses safely",
+      "passed": true
+    },
+    {
+      "name": "recovery-status returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "stale checkpoint leaves source active",
+      "passed": true
+    },
+    {
+      "name": "checkpoint returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "restore returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "activate returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "recovery-status returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "exactly one authority admits after cutover",
+      "passed": true
+    },
+    {
+      "name": "project-init refuses safely",
+      "passed": true
+    },
+    {
+      "name": "run returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "source fence also refuses duplicate dispatch",
+      "passed": true
+    },
+    {
+      "name": "run returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "activated duplicate returns original receipt without reexecution",
+      "passed": true
+    },
+    {
+      "name": "run returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "real post-cutover run completed and cleaned up",
+      "passed": true
+    },
+    {
+      "name": "project-status returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "cutover preserved prior charges and charged new work once",
+      "passed": true
+    },
+    {
+      "name": "activate returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "same-pair retry preserves new usage",
+      "passed": true
+    },
+    {
+      "name": "restore returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "activate refuses safely",
+      "passed": true
+    },
+    {
+      "name": "recovery-status returns successful JSON",
+      "passed": true
+    },
+    {
+      "name": "second activation target stays held",
+      "passed": true
+    }
+  ],
+  "passed": 38,
+  "elapsed_seconds": 16.942,
+  "observed_accounting_loss_cpu_seconds": 0,
+  "limitations": [
+    "Same local host and filesystem only; no remote disaster recovery or live cloud acceptance",
+    "Synthetic operator-driven exercise; no independent second operator or hosted recovery target",
+    "Unknown jobs remain held until source reconciliation and fresh checkpoint",
+    "Checksums require a separately retained trusted digest; not protection from a privileged rollback"
+  ],
+  "tested_revision": "3e5de0bb523cf7c752c1e63d04b327bbd1bb0735",
+  "revision_boundary": "Local runtime code exercised before commit matched this revision. Later FIFO-input fix has separate targeted regression evidence."
+}

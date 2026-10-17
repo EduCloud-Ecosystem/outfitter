@@ -250,7 +250,9 @@ func writeExclusive(path string, b []byte) error {
 	return e
 }
 func readBounded(path string, max int64) ([]byte, error) {
-	fd, e := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	// Inspect special files without waiting for a writer/device before fstat can
+	// reject them. O_NONBLOCK has no effect on supported regular file reads.
+	fd, e := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC|syscall.O_NONBLOCK, 0)
 	if e != nil {
 		return nil, e
 	}
