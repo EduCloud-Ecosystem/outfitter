@@ -2,6 +2,21 @@
 
 Status legend: ☐ not started · ◐ in progress · ☑ done
 
+## Executable local research slice — October 17, 2026
+
+The original milestones below remain the broader target. [Spec 09](specs/09-reviewed-local-research-broker.md)
+records the implemented subset and explicit deviations: Go CLI/library,
+stateless describer and stateful provisioner, positive fail-closed capability
+checks, local atomic reservation ledger, bounded Docker execution, cancellation,
+reconciliation, and a detached supervised watchdog. Actual Docker lifecycle and
+broker-SIGKILL acceptance are recorded in [the runbook](docs/LOCAL-RESEARCH-BROKER.md).
+Provider self-expiry after host/watchdog loss, T-standard/T-strong, normalized
+financial reporting, cloud execution, and course handoff are not completed by
+this slice. The October 13 assignment selects Jetstream2 before Codespaces.
+A [read-only Jetstream2 preflight and gated worker API](docs/JETSTREAM2-PREFLIGHT.md)
+now have mocked lifecycle/failure coverage. Durable SU journal integration,
+independent cloud cleanup supervision and live provider acceptance remain open.
+
 ## M0 — Spec-first scaffold (this commit)
 - ☑ Repo, remote, governance (Apache-2.0 + DCO), `DESIGN.md`, `specs/00–05`
 - ☑ Stack decision (Go) recorded

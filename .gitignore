@@ -21,3 +21,6 @@ _git_locks_to_delete/
 
 # Superseded files parked for manual deletion (the bridge cannot rm).
 _to_delete/
+
+# Private local research broker acceptance state
+/.runtime/

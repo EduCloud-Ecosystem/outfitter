@@ -10,9 +10,15 @@ compute a program actually has: GitHub Codespaces, campus HPC, NSF ACCESS
 (Jetstream2), Pegasus workflows, or plain Docker for local dev. It tracks what was
 used and what it cost, and it will not spend past a budget you set.
 
-> ⚠️ **Status: pre-alpha, spec-first.** This repository currently holds the design
-> and specs. No provisioning code has landed yet. Start with `DESIGN.md` and
-> `specs/00-overview.md`.
+> **Status: pre-alpha, local research proof of concept.** The reviewed-local
+> Docker broker now executes pinned recipes with durable finite reservations and
+> verified owned cleanup. It requires an explicit supervised-watchdog exception;
+> stronger isolation, cloud provider acceptance and institutional readiness remain
+> separate gates. Start with [the runnable contract](specs/09-reviewed-local-research-broker.md)
+> and [operator runbook](docs/LOCAL-RESEARCH-BROKER.md).
+> Jetstream2 has a [read-only preflight and gated API seam](docs/JETSTREAM2-PREFLIGHT.md);
+> live worker provisioning remains disabled pending native-unit accounting and
+> independent-supervisor integration.
 
 ## Why
 
