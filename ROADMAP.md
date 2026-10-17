@@ -13,6 +13,9 @@ broker-SIGKILL acceptance are recorded in [the runbook](docs/LOCAL-RESEARCH-BROK
 Provider self-expiry after host/watchdog loss, T-standard/T-strong, normalized
 financial reporting, cloud execution, and course handoff are not completed by
 this slice. The October 13 assignment selects Jetstream2 before Codespaces.
+A [read-only Jetstream2 preflight and gated worker API](docs/JETSTREAM2-PREFLIGHT.md)
+now have mocked lifecycle/failure coverage. Durable SU journal integration,
+independent cloud cleanup supervision and live provider acceptance remain open.
 
 ## M0 — Spec-first scaffold (this commit)
 - ☑ Repo, remote, governance (Apache-2.0 + DCO), `DESIGN.md`, `specs/00–05`

@@ -1,0 +1,44 @@
+name: Broker verification
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go-and-docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHON_IMAGE: python@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - name: Race tests and static checks
+        run: |
+          go test -race ./...
+          go vet ./...
+          test -z "$(gofmt -l cmd internal)"
+      - name: Build local broker
+        run: go build -o bin/outfitter ./cmd/outfitter
+      - name: Prepare pinned public Python image
+        run: docker pull "$PYTHON_IMAGE"
+      - name: Actual Docker adapter lifecycle
+        run: OUTFITTER_DOCKER_IMAGE="$PYTHON_IMAGE" go test -v ./internal/provider/docker
+      - name: Bounded execution and broker-loss acceptance
+        run: python3 scripts/verify_docker.py --image "$PYTHON_IMAGE" --output .runtime/docker-ci.json
+      - name: Save sanitized local acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: docker-acceptance
+          path: .runtime/docker-ci.json
+          if-no-files-found: warn
+          retention-days: 14

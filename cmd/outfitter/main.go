@@ -19,6 +19,7 @@ import (
 	"github.com/EduCloud-Ecosystem/outfitter/internal/ledger"
 	"github.com/EduCloud-Ecosystem/outfitter/internal/provider"
 	"github.com/EduCloud-Ecosystem/outfitter/internal/provider/docker"
+	"github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2"
 )
 
 func main() {
@@ -35,10 +36,16 @@ func execute() error {
 		return e
 	}
 	args := root.Args()
-	if *state == "" || len(args) < 1 {
+	if len(args) < 1 {
 		return errors.New("usage: outfitter --state-dir PRIVATE_PATH COMMAND")
 	}
 	command := args[0]
+	if command == "jetstream2-preflight" {
+		return jetstreamPreflight(args[1:])
+	}
+	if *state == "" {
+		return errors.New("private --state-dir is required")
+	}
 	f := flag.NewFlagSet(command, flag.ContinueOnError)
 	f.SetOutput(io.Discard)
 	project := f.String("project-id", "", "opaque project identifier")
@@ -123,6 +130,47 @@ func execute() error {
 	default:
 		return errors.New("unknown command")
 	}
+	if e != nil {
+		return e
+	}
+	return json.NewEncoder(os.Stdout).Encode(result)
+}
+
+func jetstreamPreflight(args []string) error {
+	flags := flag.NewFlagSet("jetstream2-preflight", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	path := flags.String("config", "", "nonsecret pinned provider configuration")
+	if e := flags.Parse(args); e != nil {
+		return e
+	}
+	if *path == "" || len(flags.Args()) != 0 {
+		return errors.New("jetstream2-preflight requires --config FILE")
+	}
+	f, e := os.Open(*path)
+	if e != nil {
+		return errors.New("provider configuration unavailable")
+	}
+	defer f.Close()
+	var config jetstream2.Config
+	decoder := json.NewDecoder(io.LimitReader(f, 65537))
+	decoder.DisallowUnknownFields()
+	if e = decoder.Decode(&config); e != nil {
+		return errors.New("invalid provider configuration")
+	}
+	if decoder.Decode(new(any)) != io.EOF {
+		return errors.New("trailing or oversized provider configuration")
+	}
+	client, e := jetstream2.New(config, nil, nil)
+	if e != nil {
+		return e
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	credentials := jetstream2.Credentials{ID: os.Getenv("OS_APPLICATION_CREDENTIAL_ID"), Secret: os.Getenv("OS_APPLICATION_CREDENTIAL_SECRET")}
+	if e = client.Authenticate(ctx, credentials); e != nil {
+		return e
+	}
+	result, e := client.Preflight(ctx)
 	if e != nil {
 		return e
 	}
