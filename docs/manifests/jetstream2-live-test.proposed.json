@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED_NOT_AUTHORIZED",
+  "prepared_on": "2026-10-17",
+  "operator": {"name": "Greg Chism", "confirmation": "TBD"},
+  "allocation": {"approved_id": null, "candidate": "SOC250004 or Ben Markwart's approved CPU allocation", "cpu_entitlement": "TBD", "available_milli_su": null},
+  "provider": "jetstream2",
+  "site_preference": "Indiana University",
+  "region": null,
+  "auth_url": null,
+  "project_id": null,
+  "image": {"candidate_name": "Featured-Ubuntu24", "id": null, "hash": null, "platform": "linux/amd64; verify selected image"},
+  "flavor": {"name": "m3.tiny", "id": null, "vcpus": 1, "memory_gb": 3, "ephemeral_disk_gb": 20, "rate_milli_su_per_hour": 1000, "rate_checked_on": "2026-10-17", "rate_source": "https://docs.jetstream-cloud.org/general/vmsizes/"},
+  "network": {"id": null, "security_group_id": null, "new_networks": 0, "new_floating_ips": 0, "access": "approved private route; TBD"},
+  "limits": {"total_workers": 1, "max_concurrency": 1, "total_create_attempts": 1, "max_seconds": 600, "reservation_milli_su": 1000, "aggregate_ceiling_milli_su": 1000, "new_volumes": 0, "snapshots": 0, "retained_cloud_storage_gb": 0, "gpu_workers": 0},
+  "proposed_window": {"timezone": "America/Los_Angeles", "start": "2026-10-20T10:00:00-07:00", "absolute_expiry": "2026-10-20T10:10:00-07:00", "teardown_observation_due": "2026-10-20T10:15:00-07:00", "manual_rescue_escalation": "2026-10-20T10:15:00-07:00", "decision_window_closes": "2026-10-20T11:00:00-07:00", "rule": "Draft slot only. Replace and reapprove if changed or expired; never roll deadlines forward automatically."},
+  "cleanup": {"operator": "Greg Chism", "supervisor_host": null, "failure_domain": "TBD; require existing approved capacity independent of requester and worker", "cadence_seconds": 15, "command": "outfitter --state-dir PRIVATE_STATE jetstream2-reap --config PRIVATE_CONFIG", "verify": "fresh provider observer confirms recorded server and port absent plus exact reservation inventory empty", "outage": "halt admission, retain liability, alert named operator, continue cleanup when API returns; do not assert a provider-enforced SU cap"},
+  "data": "public/synthetic only",
+  "workload": {"recipe": "reviewed Python print(6 * 7)", "expected_stdout": "42", "transfer_and_private_access": "NOT RUN; review and pin before approval"},
+  "settlement": {"source": "provider report with independently retained SHA-256 evidence", "estimated_su_for_10_minutes": 0.166667, "settled_su": null, "access_credits": "separate allocation currency; no conversion performed", "dollar_charge": null},
+  "blocked_by": ["separate live-test authorization", "operator and allocation approval", "project/region/auth/image/hash/flavor/network/security-group pins", "confirmed CPU entitlement, balance, quota and current capacity", "independent cleanup host and durable-state recovery design", "reviewed finite live runner and private workload handoff", "accepted supervised-expiry exception and rescue plan"]
+}

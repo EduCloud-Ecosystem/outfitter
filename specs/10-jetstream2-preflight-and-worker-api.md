@@ -26,8 +26,10 @@ for adapter integration tests. Every create requires a `Journal` implementation
 that has committed the opaque request's finite native-unit reservation and
 independent-supervisor approval BEFORE any provider POST. The default client has
 no such journal and refuses creation. There is no live provisioning CLI. The
-in-memory journal in tests is mock evidence only; a durable SU ledger, accepted
-supervisor and allocation-backed live run remain required integration work.
+in-memory journal in the original seam tests is mock evidence only.
+[Spec 12](12-native-unit-journal-and-cleanup.md) adds the shared durable journal and
+cleanup-only supervisor; independent-host qualification and an allocation-backed
+live run remain required.
 
 The API creates an explicitly owned Neutron port, persists its ID, then creates
 one image-backed Nova server using that port and exact image/flavor references.

@@ -62,3 +62,5 @@ creation, teardown or expiry test was performed.
 4. Only after approval of that concrete bounded live configuration, execute the
    disposable worker lifecycle, failure/cleanup acceptance and separate
    Waypoint/Cairn handoff. The local research workspace does not depend on it.
+
+The next increment is documented in [native accounting and cleanup](JETSTREAM2-NATIVE-ACCOUNTING.md). Its durable journal and cleanup-only CLI have simulated-provider tests; live creation, allocation use and independent-host qualification remain separate gates.

@@ -19,8 +19,9 @@ used and what it cost, and it will not spend past a budget you set.
 > Private checkpoints and a held replacement with one-way source fencing are
 > documented in the [local recovery runbook](docs/LOCAL-RECOVERY.md).
 > Jetstream2 has a [read-only preflight and gated API seam](docs/JETSTREAM2-PREFLIGHT.md);
-> live worker provisioning remains disabled pending native-unit accounting and
-> independent-supervisor integration.
+> the [durable native-SU journal and cleanup supervisor](docs/JETSTREAM2-NATIVE-ACCOUNTING.md)
+> now have simulated-provider and process-recovery tests. Live worker creation has
+> no CLI and remains subject to allocation and independent-host qualification.
 
 ## Why
 

@@ -23,7 +23,9 @@ jobs:
           cache: false
       - name: Race tests and static checks
         run: |
-          go test -race ./...
+          set -o pipefail
+          mkdir -p .runtime
+          go test -race -json ./... | tee .runtime/go-tests.jsonl
           go vet ./...
           test -z "$(gofmt -l cmd internal)"
       - name: Build local broker
@@ -42,6 +44,7 @@ jobs:
         with:
           name: docker-acceptance
           path: |
+            .runtime/go-tests.jsonl
             .runtime/docker-ci.json
             .runtime/recovery-ci.json
           if-no-files-found: warn

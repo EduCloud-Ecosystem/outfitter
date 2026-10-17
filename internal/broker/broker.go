@@ -60,7 +60,7 @@ func (b *Broker) Reserve(w provider.Request) (provider.Record, bool, error) {
 			r = old
 			return nil
 		}
-		if len(d.Runs) >= ledger.MaxRecords {
+		if len(d.Runs)+len(d.NativeRuns) >= ledger.MaxRecords {
 			return errors.New("authority metadata capacity exhausted; new admission refused")
 		}
 		if _, ok := d.Projects[w.ProjectID]; !ok {
