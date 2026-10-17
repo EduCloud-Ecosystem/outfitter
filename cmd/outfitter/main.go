@@ -56,11 +56,25 @@ func execute() error {
 	budget := f.Int64("budget-cpu-seconds", 0, "finite project budget")
 	request := f.String("request", "", "request JSON file")
 	id := f.String("request-id", "", "request identifier")
+	output := f.String("output", "", "new private checkpoint directory")
+	checkpoint := f.String("checkpoint", "", "validated private checkpoint directory")
+	checkpointSHA := f.String("checkpoint-sha256", "", "separately retained checkpoint digest")
+	source := f.String("source-state-dir", "", "current local source authority")
 	if e := f.Parse(args[1:]); e != nil {
 		return e
 	}
 	if len(f.Args()) > 0 {
 		return errors.New("unexpected arguments")
+	}
+	if command == "restore" {
+		if *checkpoint == "" || *checkpointSHA == "" {
+			return errors.New("restore requires --checkpoint and --checkpoint-sha256")
+		}
+		result, e := ledger.Restore(*state, *checkpoint, *checkpointSHA)
+		if e != nil {
+			return e
+		}
+		return json.NewEncoder(os.Stdout).Encode(result)
 	}
 	s, e := ledger.Open(*state, command == "project-init")
 	if e != nil {
@@ -99,6 +113,18 @@ func execute() error {
 	defer stop()
 	var result any
 	switch command {
+	case "checkpoint":
+		if *output == "" {
+			return errors.New("checkpoint requires --output NEW_PRIVATE_DIRECTORY")
+		}
+		result, e = s.Checkpoint(*output)
+	case "recovery-status":
+		result, e = s.RecoveryStatus()
+	case "activate":
+		if *source == "" || *checkpoint == "" || *checkpointSHA == "" {
+			return errors.New("activate requires --source-state-dir, --checkpoint and --checkpoint-sha256")
+		}
+		result, e = s.Activate(*source, *checkpoint, *checkpointSHA)
 	case "project-init":
 		result, e = s.InitProject(*project, *budget)
 	case "project-status":
