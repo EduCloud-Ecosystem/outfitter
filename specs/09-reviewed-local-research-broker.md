@@ -60,7 +60,12 @@ Request v1 (strict JSON, unknown fields refused):
 
 Image must be a local immutable sha256 image ID or repository digest; no implicit
 pull. Admission caps CPU at 2, RAM at 1024 MiB, PIDs at 128, wall time at 300s,
-combined stdout/stderr at 1 MiB, active jobs at 2 per project and 4 per store.
+combined stdout/stderr at 1 MiB, active jobs at 2 per project and 4 per store. A store admits at most 512 projects
+and 512 lifetime request records. Encoded requests are capped at 32 KiB, images
+at 512 bytes, input paths at 4096 bytes each and retained error text at 2048 bytes.
+Compact authority records have a 96 KiB ceiling; the record/project admission
+caps leave reserved terminal-state space below the 64 MiB reader bound. Reaching
+capacity refuses new admission while existing cancellation/reaping can finish.
 Input and recipe directories are copied into private immutable per-run snapshots
 (maximum 16 MiB combined, no links/special files within snapshots). Container paths are `/input`
 and `/recipe`; output is bounded stdout (one JSON result for Waypoint) and stderr.
@@ -79,13 +84,28 @@ zero compute and `not_admitted` provenance. Ledger errors/collisions return
 
 ## Durability and provider boundaries
 
+Execution stdout/stderr are stored in separate private content-addressed diagnostic
+files, referenced by SHA-256 and encoded length. The authority ledger does not
+hydrate those files during accounting, cancellation, reconciliation or watchdog
+reads. Missing/corrupt/unwritable diagnostics produce a visible `output_error` in
+receipts, without preventing terminal authority updates. Receipts hydrate one
+bounded output at a time. Accepted terminal receipts remain immutable under
+concurrent cleanup.
+
 Single local filesystem ledger uses process-shared advisory locking, validated
 JSON, file fsync, atomic rename, and directory fsync. No shared/network filesystem;
-one operator owns the private state directory. Project budgets are immutable.
+one operator owns the private state directory. Project budgets are immutable. Recovered records must agree with their original
+request IDs, project, image, payload hash and deterministic resource name. Only
+zero-charge/full-reservation unresolved accounting or full-charge/verified-cleanup
+settled accounting is accepted; partial charges and reattribution fail closed.
 Admission commits a deterministic resource name and reservation before effects.
 Missing/corrupt existing state fails closed. System parent paths are canonicalized;
 the state directory itself cannot be a symlink. Lost Docker responses and uncertain
-cleanup preserve liability. Private input snapshots remain for operator-controlled
+cleanup preserve liability. In particular, an absent container after an ambiguous
+create response is provisional: later creation may still complete, so the request
+remains unresolved and eligible for supervised reaping. This version has no
+automatic settlement for an ambiguous create. Known-create cleanup failures can
+settle only after verified teardown, charging the full ceiling. Private input snapshots remain for operator-controlled
 recovery; no user records or payloads enter the accounting metadata.
 
 Docker invokes argument arrays (no shell construction), disables networking and
@@ -107,3 +127,13 @@ report separately: pure estimate, reserved creation, running/status, declared
 unsupported sampling, teardown, repeated teardown, nil/expired reservation,
 isolation refusal, and broker SIGKILL with surviving watchdog. Host/watchdog-loss
 self-expiry is explicitly unsupported and is not marked passed.
+
+## Compatibility with the initial local pilot
+
+Existing valid version-1 ledgers below 64 MiB remain readable. Their inline
+stdout/stderr spill into hashed diagnostic files on the next authority update,
+without resetting balances, request IDs, deadlines or retained results. A legacy
+ledger already oversized or internally inconsistent is preserved and refused,
+never silently reinitialized; operator-assisted recovery is required. The
+per-record and record-count bounds do not replace a filesystem capacity/backup
+policy for the diagnostic and input snapshots.

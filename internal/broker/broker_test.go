@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/EduCloud-Ecosystem/outfitter/internal/ledger"
 	"github.com/EduCloud-Ecosystem/outfitter/internal/provider"
@@ -215,12 +214,13 @@ func TestCancelUnfinishedCreationRemainsUncertain(t *testing.T) {
 }
 func TestReconcileChargesFullCeilingNeverRefunds(t *testing.T) {
 	b, r, f := setup(t, 30)
-	f.createError = true
+	f.cleanupError = true
 	_, e := b.Run(context.Background(), r)
 	if e != nil {
 		t.Fatal(e)
 	}
-	_, e = b.change(r.RequestID, func(x *provider.Record) { x.Deadline = time.Now().Add(-time.Second) })
+	f.cleanupError = false
+	_, e = b.change(r.RequestID, func(x *provider.Record) { x.CancelRequested = true })
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -16,6 +16,7 @@ HTTP endpoints, redirects, project mismatches and missing/ambiguous regional
 service endpoints. No broad credential discovery is performed.
 
 The report separates passing resource checks from `provisioning_enabled:false`.
+Image/quota/resource failures emit that report with a nonzero command exit.
 It reports allocation balance, resource entitlement, host capacity, dated native
 SU rates, durable native-unit accounting and independent expiry as unknown or
 unaccepted. A quota check is not proof of an available worker. Image UUID plus
@@ -41,7 +42,8 @@ liability; no disappearance or guest shutdown becomes an assumed zero charge.
 OpenStack tests cover read-only preflight; region/project/authentication checks;
 redirect refusal; image checksum and quota failures; missing reservation or
 supervisor; create/status/delete and repeated teardown; lost-create response;
-foreign/unrecorded resource refusal; and retained native-unit liabilities.
+foreign/unrecorded resource refusal; delayed journal/port deadlines that cannot
+start later creation; and retained native-unit liabilities.
 No live authentication, resource entitlement, allocation balance, capacity,
 creation, teardown or expiry test was performed.
 

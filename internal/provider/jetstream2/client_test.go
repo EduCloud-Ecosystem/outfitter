@@ -20,6 +20,9 @@ type memoryJournal struct {
 	records    map[string]WorkerRecord
 	denied     bool
 	supervisor bool
+	saveDelay  time.Duration
+	saveCount  int
+	lifetime   time.Duration
 }
 
 func (j *memoryJournal) Admit(_ context.Context, r WorkerRequest) (WorkerRecord, bool, error) {
@@ -34,13 +37,21 @@ func (j *memoryJournal) Admit(_ context.Context, r WorkerRequest) (WorkerRecord,
 		}
 		return old, false, nil
 	}
-	v := WorkerRecord{Request: r, ProjectID: j.config.ProjectID, Region: j.config.Region, ImageID: j.config.ImageID, FlavorID: j.config.FlavorID, ReservationID: "reserved-" + r.RequestID, ReservedMilliSU: r.CeilingMilliSU, Deadline: time.Now().Add(time.Duration(r.MaxSeconds) * time.Second), SupervisorApproved: j.supervisor}
+	lifetime := time.Duration(r.MaxSeconds) * time.Second
+	if j.lifetime > 0 {
+		lifetime = j.lifetime
+	}
+	v := WorkerRecord{Request: r, ProjectID: j.config.ProjectID, Region: j.config.Region, ImageID: j.config.ImageID, FlavorID: j.config.FlavorID, ReservationID: "reserved-" + r.RequestID, ReservedMilliSU: r.CeilingMilliSU, Deadline: time.Now().Add(lifetime), SupervisorApproved: j.supervisor}
 	j.records[r.RequestID] = v
 	return v, true, nil
 }
 func (j *memoryJournal) Save(_ context.Context, r WorkerRecord) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	j.saveCount++
+	if j.saveDelay > 0 {
+		time.Sleep(j.saveDelay)
+	}
 	j.records[r.Request.RequestID] = r
 	return nil
 }
@@ -67,6 +78,7 @@ type apiFixture struct {
 	badHash      bool
 	quotaFail    bool
 	redirect     bool
+	portDelay    time.Duration
 }
 
 func (f *apiFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -125,6 +137,9 @@ func (f *apiFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		f.postCount++
 		f.port = true
+		if f.portDelay > 0 {
+			time.Sleep(f.portDelay)
+		}
 		write(map[string]any{"port": map[string]string{"id": "port"}})
 	case "/compute/servers":
 		if r.Method != "POST" {
@@ -325,5 +340,45 @@ func TestHTTPAndCredentialsInURLRefused(t *testing.T) {
 		if _, e := New(config, nil, nil); e == nil {
 			t.Fatal("unsafe URL admitted")
 		}
+	}
+}
+
+func TestExpiredReservationNeverBeginsPortCreation(t *testing.T) {
+	c, f, j := setupCloud(t)
+	auth(t, c)
+	j.lifetime = 200 * time.Millisecond
+	j.saveDelay = 250 * time.Millisecond
+	record, e := c.CreateWorker(context.Background(), WorkerRequest{"request", "owner", 1, 100})
+	if e == nil || f.postCount != 0 || record.Status != "unknown" || !record.UnresolvedLiability {
+		t.Fatal(record, e, f.postCount)
+	}
+}
+func TestExpiredReservationAfterRecordedPortNeverBeginsServer(t *testing.T) {
+	c, f, j := setupCloud(t)
+	auth(t, c)
+	j.lifetime = time.Second
+	j.saveDelay = 600 * time.Millisecond
+	record, e := c.CreateWorker(context.Background(), WorkerRequest{"request", "owner", 1, 100})
+	if e == nil || f.postCount != 1 || record.PortID != "port" || record.ServerID != "" || !record.UnresolvedLiability {
+		t.Fatal(record, e, f.postCount)
+	}
+	persisted, _ := j.Lookup(context.Background(), "request")
+	if persisted.PortID != "port" {
+		t.Fatal("known port ID lost")
+	}
+}
+func TestDelayedPortResponseIsDeadlineBoundedAndCannotCreateServer(t *testing.T) {
+	c, f, j := setupCloud(t)
+	auth(t, c)
+	j.lifetime = 200 * time.Millisecond
+	f.portDelay = 400 * time.Millisecond
+	record, e := c.CreateWorker(context.Background(), WorkerRequest{"request", "owner", 1, 100})
+	if e == nil || record.Status != "unknown" || !record.UnresolvedLiability {
+		t.Fatal(record, e)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.postCount != 1 || f.server {
+		t.Fatal("server created after delayed port", f.postCount)
 	}
 }

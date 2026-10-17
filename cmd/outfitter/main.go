@@ -22,9 +22,13 @@ import (
 	"github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2"
 )
 
+var errReportedPreflight = errors.New("preflight resource checks failed")
+
 func main() {
 	if e := execute(); e != nil {
-		json.NewEncoder(os.Stdout).Encode(map[string]string{"error": e.Error()})
+		if !errors.Is(e, errReportedPreflight) {
+			json.NewEncoder(os.Stdout).Encode(map[string]string{"error": e.Error()})
+		}
 		os.Exit(2)
 	}
 }
@@ -100,9 +104,7 @@ func execute() error {
 	case "project-status":
 		result, e = s.Usage(*project)
 	case "status":
-		var r provider.Record
-		r, e = s.Record(*id)
-		result = r.Receipt
+		result, e = s.Receipt(*id)
 	case "run":
 		file, er := os.Open(*request)
 		if er != nil {
@@ -174,5 +176,15 @@ func jetstreamPreflight(args []string) error {
 	if e != nil {
 		return e
 	}
-	return json.NewEncoder(os.Stdout).Encode(result)
+	return emitPreflight(os.Stdout, result)
+}
+
+func emitPreflight(w io.Writer, result jetstream2.Preflight) error {
+	if e := json.NewEncoder(w).Encode(result); e != nil {
+		return e
+	}
+	if !result.ResourceChecksPassed {
+		return errReportedPreflight
+	}
+	return nil
 }

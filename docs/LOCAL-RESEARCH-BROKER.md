@@ -15,7 +15,9 @@ Waypoint validates it independently and saves the resulting artifact. R requires
 the bounded 1024-file descriptor limit used by the adapter.
 
 Each project-init creates an immutable CPU-second allowance. Identical repeats
-return current usage; changing its allowance is refused. Store this private
+return current usage; changing its allowance is refused. Each private store admits at most 512 projects
+and 512 lifetime request records; new admission stops at capacity while existing
+cleanup remains available. Store this private
 state on one local filesystem with mode 0700. It contains no identity tokens,
 but does contain private input/recipe snapshots and bounded execution output;
 protect it accordingly. Accounted CPU-seconds are ceiling estimates, not measured
@@ -36,14 +38,20 @@ can defeat the timeout. No default provider-self-expiry acceptance is claimed.
 - Use `status` for durable accounting status. `cancel` records intent before owned
   cleanup. `reconcile` independently observes cleanup and charges the full
   reservation; it never refunds uncertain execution.
-- If the creation response was never recorded, a later absence is provisional:
+- If the creation response was never recorded or returned ambiguously, a later absence is provisional:
   retain the liability and investigate the daemon/client outcome before recovery.
   The watchdog continues owned cleanup attempts rather than recreating work.
+  This version does not automatically settle ambiguous creation even after
+  absence; a late provider completion must remain discoverable and reapable.
 - A daemon/query failure is unknown, never absence. No command sweeps unrecorded
   containers, shared networks or volumes. Removal requires matching owner and
   request labels. The image cannot declare anonymous writable volumes.
 - Do not delete or restore an older ledger to reset allowances. Restore current
   accounting and preserve unresolved liabilities before reopening admission.
+- Execution diagnostics live in separate hashed private files; accounting and
+  cleanup never require reading them. Missing/corrupt/unwritable diagnostics are
+  exposed by `output_error`, without blocking terminal accounting. Existing valid
+  inline-output ledgers migrate on their next update without resetting budgets.
 - Snapshot retention is operator controlled in this proof of concept. Per-request
   input/output bounds do not provide a store-wide disk quota, backup policy or
   retention workflow. Those remain institutional deployment work.
@@ -52,7 +60,11 @@ can defeat the timeout. No default provider-self-expiry acceptance is claimed.
 
 `go test -race ./...` and `go vet ./...` cover admission bounds, concurrent
 reservations, durable reopen, immutable budgets, corrupt/missing state, symlinks,
-unknown creation, cleanup failures, cancellation, timeout and output bounds.
+unknown creation, late completion, cleanup failures, cancellation, timeout and
+output bounds. Review regressions cover twelve 1 MiB NUL-output runs, terminal
+cleanup at the full 512-record authority ceiling, missing/unwritable diagnostic
+files, compatible inline-output migration, partial-charge corruption and project
+reattribution corruption.
 
 Actual adapter conformance is opt-in:
 

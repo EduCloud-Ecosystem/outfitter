@@ -8,7 +8,11 @@ credentials from `OS_APPLICATION_CREDENTIAL_ID` and
 pins auth URL, project UUID, region, image UUID and checksum, flavor, network and
 security-group IDs. HTTPS certificate verification and no-redirect HTTP clients
 are mandatory. Authentication obtains a token; subsequent preflight calls only
-GET resources and quota detail. It never creates a worker or network resource.
+GET resources and quota detail. It never creates a worker or network resource. Failed resource checks still
+emit the structured report and exit nonzero. Resource mutation contexts are
+bounded by the persisted reservation deadline, rechecked immediately before
+every creation POST; known port IDs and liabilities survive refusal of a later
+server creation.
 
 Preflight verifies the token project, exact catalog region/public endpoints,
 active image and expected content checksum, selected flavor, active network,

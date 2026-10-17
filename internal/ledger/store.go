@@ -3,6 +3,7 @@ package ledger
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -10,10 +11,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/EduCloud-Ecosystem/outfitter/internal/provider"
 )
+
+const MaxRecords = 512
+const MaxProjects = 512
+const maxRecordBytes = 96 << 10
+const maxLedgerBytes = 64 << 20
 
 type Project struct {
 	ID     string `json:"project_id"`
@@ -122,32 +130,112 @@ func (s *Store) read() (Data, error) {
 	if dec.Decode(new(any)) != io.EOF {
 		return d, errors.New("trailing ledger data")
 	}
-	if d.Version != 1 || len(d.Owner) != 32 || d.Projects == nil || d.Runs == nil {
-		return d, errors.New("incomplete ledger")
-	}
-	for id, p := range d.Projects {
-		if p.ID != id || !provider.ValidID(id) || p.Budget <= 0 || p.Budget > 1000000000 {
-			return d, errors.New("invalid project ledger")
-		}
-	}
-	for id, r := range d.Runs {
-		if r.RequestID != id || r.Owner != d.Owner || r.PayloadHash != r.Request.Hash() || r.Compute.Reserved != r.Request.ReservationAmount() || r.Compute.Charged < 0 || r.Compute.Charged > r.Compute.Reserved {
-			return d, errors.New("invalid reservation ledger")
-		}
-		if _, ok := d.Projects[r.ProjectID]; !ok {
-			return d, errors.New("orphan reservation")
-		}
-	}
-	for id := range d.Projects {
-		u := Calculate(d, id)
-		if u.Remaining < 0 {
-			return d, errors.New("budget ledger overdrawn")
-		}
+	if e = validate(d); e != nil {
+		return d, e
 	}
 	return d, nil
 }
+func validate(d Data) error {
+	if d.Version != 1 || len(d.Owner) != 32 || d.Projects == nil || d.Runs == nil || len(d.Projects) > MaxProjects || len(d.Runs) > MaxRecords {
+		return errors.New("incomplete or over-capacity ledger")
+	}
+	if decoded, e := hex.DecodeString(d.Owner); e != nil || len(decoded) != 16 {
+		return errors.New("invalid ledger owner")
+	}
+	for id, p := range d.Projects {
+		if p.ID != id || !provider.ValidID(id) || p.Budget <= 0 || p.Budget > 1000000000 {
+			return errors.New("invalid project ledger")
+		}
+	}
+	allowed := map[string]bool{"reserved": true, "creating": true, "running": true, "succeeded": true, "failed": true, "cancelled": true, "unknown": true}
+	for id, r := range d.Runs {
+		if e := r.Request.Validate(); e != nil {
+			return errors.New("invalid persisted request")
+		}
+		h := sha256.Sum256([]byte(d.Owner + ":" + id))
+		name := "outfitter-" + hex.EncodeToString(h[:16])
+		if r.RequestID != id || r.Request.RequestID != id || r.ProjectID != r.Request.ProjectID || r.Image != r.Request.Image || r.Owner != d.Owner || r.Name != name || r.PayloadHash != r.Request.Hash() || !r.Admitted || r.SchemaVersion != 1 || !allowed[r.Status] || r.CreatedAt.IsZero() || !r.Deadline.Equal(r.CreatedAt.Add(time.Duration(r.Request.TimeoutSeconds)*time.Second)) {
+			return errors.New("reservation identity or lifecycle metadata mismatch")
+		}
+		if _, ok := d.Projects[r.ProjectID]; !ok {
+			return errors.New("orphan reservation")
+		}
+		if r.Compute.Reserved != r.Request.ReservationAmount() || len(r.Error) > 2048 || len(r.OutputError) > 256 || r.TeardownRisk != "supervised external watchdog; no provider self-expiry" {
+			return errors.New("invalid reservation amount or diagnostic bound")
+		}
+		if r.CreateAmbiguous && !r.UnresolvedLiability {
+			return errors.New("ambiguous creation cannot settle from an absence observation")
+		}
+		if r.UnresolvedLiability {
+			if r.Compute.Charged != 0 || r.Compute.Provenance != "reserved" {
+				return errors.New("unresolved liability must retain its whole reservation")
+			}
+		} else {
+			if r.Compute.Charged != r.Compute.Reserved || r.Compute.Provenance != "estimated_upper_bound" || !r.CleanupVerified || r.Status == "reserved" || r.Status == "creating" || r.Status == "running" {
+				return errors.New("settled reservation requires full conservative charge and verified cleanup")
+			}
+		}
+		if r.OutputSHA256 != "" {
+			decoded, e := hex.DecodeString(r.OutputSHA256)
+			if e != nil || len(decoded) != 32 || r.OutputSHA256 != strings.ToLower(r.OutputSHA256) || r.OutputBytes <= 0 || r.OutputBytes > (6<<20)+512 {
+				return errors.New("invalid output reference")
+			}
+		} else if r.OutputBytes != 0 {
+			return errors.New("missing output digest")
+		}
+		if len(r.Stdout)+len(r.Stderr) > r.Request.MaxOutputBytes {
+			return errors.New("retained output exceeds request limit")
+		}
+	}
+	for id := range d.Projects {
+		if Calculate(d, id).Remaining < 0 {
+			return errors.New("budget ledger overdrawn")
+		}
+	}
+	return nil
+}
+
 func (s *Store) write(d Data) error {
-	b, e := json.MarshalIndent(d, "", "  ")
+	// Persist diagnostic blobs before the authority transaction. A crash can leave
+	// an unreferenced blob, never an authority record requiring missing diagnostics.
+	if e := validate(d); e != nil {
+		return e
+	}
+	compact := d
+	compact.Runs = make(map[string]provider.Record, len(d.Runs))
+	for id, r := range d.Runs {
+		if r.Stdout != "" || r.Stderr != "" {
+			digest, size, e := s.saveOutput(r.Stdout, r.Stderr)
+			if e != nil {
+				r.OutputSHA256 = ""
+				r.OutputBytes = 0
+				r.OutputError = "execution diagnostics could not be persisted; authority accounting remains intact"
+			} else {
+				r.OutputSHA256 = digest
+				r.OutputBytes = size
+				r.OutputError = ""
+			}
+		}
+		r.Stdout = ""
+		r.Stderr = ""
+		compact.Runs[id] = r
+	}
+	if e := validate(compact); e != nil {
+		return e
+	}
+	for _, r := range compact.Runs {
+		encoded, e := json.Marshal(r)
+		if e != nil {
+			return e
+		}
+		if len(encoded) > maxRecordBytes {
+			return errors.New("authority record exceeds reserved metadata capacity")
+		}
+	}
+	b, e := json.Marshal(compact)
+	if len(b) > maxLedgerBytes {
+		return errors.New("authority store exceeds reserved metadata capacity")
+	}
 	if e != nil {
 		return e
 	}
@@ -207,6 +295,9 @@ func (s *Store) InitProject(id string, budget int64) (Usage, error) {
 		return out, errors.New("invalid project ID or finite budget")
 	}
 	e := s.Update(func(d *Data) error {
+		if _, ok := d.Projects[id]; !ok && len(d.Projects) >= MaxProjects {
+			return errors.New("project metadata capacity exhausted")
+		}
 		if p, ok := d.Projects[id]; ok && p.Budget != budget {
 			return errors.New("existing project budget is immutable")
 		}
@@ -255,4 +346,99 @@ func (s *Store) Record(id string) (provider.Record, error) {
 		return nil
 	})
 	return r, e
+}
+
+// Diagnostic bytes are never required to read authority, cancel or reap a run.
+func (s *Store) saveOutput(stdout, stderr string) (string, int64, error) {
+	data, e := json.Marshal(struct {
+		Stdout string `json:"stdout"`
+		Stderr string `json:"stderr"`
+	}{stdout, stderr})
+	if e != nil {
+		return "", 0, e
+	}
+	if len(data) > (6<<20)+512 {
+		return "", 0, errors.New("diagnostic encoding exceeds bound")
+	}
+	digest := sha256.Sum256(data)
+	name := hex.EncodeToString(digest[:])
+	dir := filepath.Join(s.Dir, "outputs")
+	if e = os.MkdirAll(dir, 0700); e != nil {
+		return "", 0, e
+	}
+	if st, e := os.Lstat(dir); e != nil || !st.IsDir() || st.Mode()&os.ModeSymlink != 0 {
+		return "", 0, errors.New("invalid diagnostic directory")
+	}
+	f, e := os.CreateTemp(dir, ".output-")
+	if e != nil {
+		return "", 0, e
+	}
+	temp := f.Name()
+	defer os.Remove(temp)
+	if _, e = f.Write(data); e == nil {
+		e = f.Sync()
+	}
+	closeErr := f.Close()
+	if e == nil {
+		e = closeErr
+	}
+	if e != nil {
+		return "", 0, e
+	}
+	if e = os.Rename(temp, filepath.Join(dir, name+".json")); e != nil {
+		return "", 0, e
+	}
+	directory, e := os.Open(dir)
+	if e != nil {
+		return "", 0, e
+	}
+	defer directory.Close()
+	if e = directory.Sync(); e != nil {
+		return "", 0, e
+	}
+	return name, int64(len(data)), nil
+}
+func (s *Store) Receipt(id string) (provider.Receipt, error) {
+	r, e := s.Record(id)
+	if e != nil {
+		return r.Receipt, e
+	}
+	if r.OutputSHA256 == "" {
+		return r.Receipt, nil
+	}
+	unavailable := func() (provider.Receipt, error) {
+		r.Stdout = ""
+		r.Stderr = ""
+		r.OutputError = "execution diagnostics missing, corrupt or oversized; authority accounting remains intact"
+		return r.Receipt, nil
+	}
+	path := filepath.Join(s.Dir, "outputs", r.OutputSHA256+".json")
+	stat, e := os.Lstat(path)
+	if e != nil || !stat.Mode().IsRegular() || stat.Size() != r.OutputBytes {
+		return unavailable()
+	}
+	fd, e := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if e != nil {
+		return unavailable()
+	}
+	file := os.NewFile(uintptr(fd), path)
+	defer file.Close()
+	data, e := io.ReadAll(io.LimitReader(file, r.OutputBytes+1))
+	if e != nil || int64(len(data)) != r.OutputBytes {
+		return unavailable()
+	}
+	digest := sha256.Sum256(data)
+	if hex.EncodeToString(digest[:]) != r.OutputSHA256 {
+		return unavailable()
+	}
+	var output struct {
+		Stdout string `json:"stdout"`
+		Stderr string `json:"stderr"`
+	}
+	if e = json.Unmarshal(data, &output); e != nil || len(output.Stdout)+len(output.Stderr) > r.Request.MaxOutputBytes {
+		return unavailable()
+	}
+	r.Stdout = output.Stdout
+	r.Stderr = output.Stderr
+	return r.Receipt, nil
 }

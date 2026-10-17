@@ -57,6 +57,9 @@ func (b *Broker) Reserve(w provider.Request) (provider.Record, bool, error) {
 			r = old
 			return nil
 		}
+		if len(d.Runs) >= ledger.MaxRecords {
+			return errors.New("authority metadata capacity exhausted; new admission refused")
+		}
 		if _, ok := d.Projects[w.ProjectID]; !ok {
 			return errors.New("project must be initialized before admission")
 		}
@@ -109,7 +112,7 @@ func (b *Broker) Run(ctx context.Context, w provider.Request) (provider.Receipt,
 		return r.Receipt, e
 	}
 	if !fresh {
-		return r.Receipt, nil
+		return b.Store.Receipt(r.RequestID)
 	}
 	// Snapshots are private host artifacts, never writable by the workload.
 	in, recipe, e := snapshot(b.Store.Dir, w)
@@ -191,12 +194,18 @@ func (b *Broker) finish(id, status, problem string, exit *int, out, errout strin
 	if e != nil {
 		return r.Receipt, e
 	}
+	if r.CleanupVerified && !r.UnresolvedLiability {
+		return b.Store.Receipt(id)
+	}
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
 	cleanupErr := b.Provider.Teardown(cleanupCtx, r)
 	// A successful query plus removal is required. It cannot settle ambiguous create.
 	clean := cleanupErr == nil
 	r, e = b.change(id, func(x *provider.Record) {
+		if x.CleanupVerified && !x.UnresolvedLiability {
+			return
+		}
 		if x.CancelRequested {
 			status = "cancelled"
 		}
@@ -209,6 +218,9 @@ func (b *Broker) finish(id, status, problem string, exit *int, out, errout strin
 			status = "unknown"
 		}
 		x.Status = status
+		if len(problem) > 2048 {
+			problem = problem[:2048]
+		}
 		x.Error = problem
 		x.ExitCode = exit
 		x.Stdout = out
@@ -224,9 +236,15 @@ func (b *Broker) finish(id, status, problem string, exit *int, out, errout strin
 		now := time.Now().UTC()
 		x.FinishedAt = &now
 	})
-	return r.Receipt, e
+	if e != nil {
+		return r.Receipt, e
+	}
+	return b.Store.Receipt(id)
 }
 func (b *Broker) Cancel(id, reason string) (provider.Receipt, error) {
+	if len(reason) > 2048 {
+		reason = reason[:2048]
+	}
 	r, e := b.change(id, func(x *provider.Record) {
 		if !x.CleanupVerified {
 			x.CancelRequested = true
@@ -237,7 +255,7 @@ func (b *Broker) Cancel(id, reason string) (provider.Receipt, error) {
 		return r.Receipt, e
 	}
 	if r.CleanupVerified {
-		return r.Receipt, nil
+		return b.Store.Receipt(id)
 	}
 	// Creation still in progress can race a late provider response: retain uncertainty.
 	return b.finish(id, "cancelled", reason, r.ExitCode, r.Stdout, r.Stderr, r.CreateAttempted && !r.CreateFinished)
@@ -255,7 +273,7 @@ func (b *Broker) Reconcile(id string) (provider.Receipt, error) {
 		return r.Receipt, e
 	}
 	if r.CleanupVerified && !r.UnresolvedLiability {
-		return r.Receipt, nil
+		return b.Store.Receipt(id)
 	}
 	if Alive(r.PID) && time.Now().Before(r.Deadline) && !r.CancelRequested {
 		return r.Receipt, errors.New("request is still owned by a live broker; cancel it first")
@@ -268,9 +286,9 @@ func (b *Broker) Reconcile(id string) (provider.Receipt, error) {
 	}
 	// Never credit capacity for uncertain execution; settle the full ceiling.
 	r, e = b.change(id, func(x *provider.Record) {
-		if x.CreateAttempted && !x.CreateFinished {
+		if x.CreateAmbiguous || (x.CreateAttempted && !x.CreateFinished) {
 			x.Status = "unknown"
-			x.Error = "creation response never recorded; cleanup observation is provisional; operator investigation required"
+			x.Error = "creation response unresolved; absence is provisional; liability and supervised cleanup remain active"
 			return
 		}
 		x.CleanupVerified = true

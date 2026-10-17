@@ -67,6 +67,15 @@ func (c *Client) CreateWorker(ctx context.Context, r WorkerRequest) (WorkerRecor
 	if record.Request != r || record.ReservationID == "" || record.ReservedMilliSU < r.CeilingMilliSU || !record.SupervisorApproved || !record.Deadline.After(time.Now()) || record.Deadline.After(time.Now().Add(time.Duration(r.MaxSeconds+1)*time.Second)) || record.ProjectID != c.config.ProjectID || record.Region != c.config.Region || record.ImageID != c.config.ImageID || record.FlavorID != c.config.FlavorID {
 		return record, errors.New("missing, mismatched or expired durable reservation/supervisor permit")
 	}
+	// Bound all provider mutation calls to the already durable lifetime.
+	mutationCtx, cancelMutation := context.WithDeadline(ctx, record.Deadline)
+	defer cancelMutation()
+	checkDeadline := func() error {
+		if mutationCtx.Err() != nil || !time.Now().Before(record.Deadline) {
+			return errors.New("durable reservation expired before provider creation")
+		}
+		return nil
+	}
 	hash := sha256.Sum256([]byte(r.Owner + ":" + r.RequestID))
 	record.Name = "outfitter-" + hex.EncodeToString(hash[:16])
 	record.Status = "creating"
@@ -89,7 +98,10 @@ func (c *Client) CreateWorker(ctx context.Context, r WorkerRequest) (WorkerRecor
 	}
 	description := "outfitter:" + r.Owner + ":" + r.RequestID
 	var port struct{ Port struct{ ID string } }
-	_, e = c.call(ctx, "POST", endpoint, map[string]any{"port": map[string]any{"name": record.Name, "network_id": c.config.NetworkID, "project_id": c.config.ProjectID, "security_groups": []string{c.config.SecurityGroupID}, "admin_state_up": true, "description": description}}, &port)
+	if e = checkDeadline(); e != nil {
+		return unknown(e)
+	}
+	_, e = c.call(mutationCtx, "POST", endpoint, map[string]any{"port": map[string]any{"name": record.Name, "network_id": c.config.NetworkID, "project_id": c.config.ProjectID, "security_groups": []string{c.config.SecurityGroupID}, "admin_state_up": true, "description": description}}, &port)
 	if e != nil {
 		return unknown(errors.New("port creation response unknown; do not retry creation"))
 	}
@@ -105,7 +117,10 @@ func (c *Client) CreateWorker(ctx context.Context, r WorkerRequest) (WorkerRecor
 		return unknown(e)
 	}
 	var server struct{ Server struct{ ID string } }
-	_, e = c.call(ctx, "POST", endpoint, map[string]any{"server": map[string]any{"name": record.Name, "imageRef": c.config.ImageID, "flavorRef": c.config.FlavorID, "networks": []map[string]string{{"port": record.PortID}}, "metadata": map[string]string{"outfitter_owner": r.Owner, "outfitter_request": r.RequestID, "outfitter_deadline": record.Deadline.UTC().Format(time.RFC3339)}}}, &server)
+	if e = checkDeadline(); e != nil {
+		return unknown(e)
+	}
+	_, e = c.call(mutationCtx, "POST", endpoint, map[string]any{"server": map[string]any{"name": record.Name, "imageRef": c.config.ImageID, "flavorRef": c.config.FlavorID, "networks": []map[string]string{{"port": record.PortID}}, "metadata": map[string]string{"outfitter_owner": r.Owner, "outfitter_request": r.RequestID, "outfitter_deadline": record.Deadline.UTC().Format(time.RFC3339)}}}, &server)
 	if e != nil {
 		return unknown(errors.New("server creation response unknown; do not retry creation"))
 	}

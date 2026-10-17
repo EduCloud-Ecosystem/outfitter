@@ -69,7 +69,7 @@ func (a *Adapter) Provision(ctx context.Context, r provider.Request, v provider.
 	if len(images[0].Config.Volumes) > 0 {
 		return errors.New("image declares implicit writable volumes; refuse unowned storage")
 	}
-	args := []string{"create", "--pull", "never", "--name", v.Name, "--label", "org.educloud.outfitter.owner=" + v.Owner, "--label", "org.educloud.outfitter.request=" + r.RequestID, "--network", "none", "--restart", "no", "--user", "65532:65532", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--cpus", strconv.FormatFloat(r.CPUs, 'f', 3, 64), "--memory", fmt.Sprintf("%dm", r.MemoryMB), "--memory-swap", fmt.Sprintf("%dm", r.MemoryMB), "--pids-limit", strconv.Itoa(r.PIDsLimit), "--ulimit", fmt.Sprintf("cpu=%d:%d", r.TimeoutSeconds, r.TimeoutSeconds), "--ulimit", "nofile=1024:1024", "--log-driver", "none", "--no-healthcheck", "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=16777216,mode=1777", "--mount", "type=bind,source=" + r.InputDir + ",target=/input,readonly", "--mount", "type=bind,source=" + r.RecipeDir + ",target=/recipe,readonly", "--workdir", "/tmp", "--env", "HOME=/tmp", "--env", "TMPDIR=/tmp", "--env", "PYTHONDONTWRITEBYTECODE=1", "--entrypoint", r.Command[0], r.Image}
+	args := []string{"create", "--pull", "never", "--name", v.Name, "--label", "org.educloud.outfitter.owner=" + v.Owner, "--label", "org.educloud.outfitter.request=" + r.RequestID, "--network", "none", "--restart", "no", "--user", "65532:65532", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--cpus", strconv.FormatFloat(r.CPUs, 'f', -1, 64), "--memory", fmt.Sprintf("%dm", r.MemoryMB), "--memory-swap", fmt.Sprintf("%dm", r.MemoryMB), "--pids-limit", strconv.Itoa(r.PIDsLimit), "--ulimit", fmt.Sprintf("cpu=%d:%d", r.TimeoutSeconds, r.TimeoutSeconds), "--ulimit", "nofile=1024:1024", "--log-driver", "none", "--no-healthcheck", "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=16777216,mode=1777", "--mount", "type=bind,source=" + r.InputDir + ",target=/input,readonly", "--mount", "type=bind,source=" + r.RecipeDir + ",target=/recipe,readonly", "--workdir", "/tmp", "--env", "HOME=/tmp", "--env", "TMPDIR=/tmp", "--env", "PYTHONDONTWRITEBYTECODE=1", "--entrypoint", r.Command[0], r.Image}
 	args = append(args, r.Command[1:]...)
 	_, e = a.command(ctx, args...)
 	return e
@@ -146,20 +146,28 @@ func (a *Adapter) Teardown(ctx context.Context, r provider.Record) error {
 	if !s.Exists {
 		return nil
 	}
-	if _, e = a.command(ctx, "container", "rm", "--force", r.Name); e != nil {
-		// Concurrent cancellation and timeout are both allowed to teardown this ID.
+	_, removeErr := a.command(ctx, "container", "rm", "--force", r.Name)
+	// Another owned reaper can already be deleting this resource. A transient
+	// "removal in progress" is not final failure, nor is it verified absence.
+	until := time.Now().Add(5 * time.Second)
+	for {
 		observed, probeErr := a.Status(ctx, r)
 		if probeErr == nil && !observed.Exists {
 			return nil
 		}
-		return e
+		if probeErr != nil {
+			return probeErr
+		}
+		if time.Now().After(until) {
+			if removeErr != nil {
+				return removeErr
+			}
+			return errors.New("resource remains after teardown")
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
-	s, e = a.Status(ctx, r)
-	if e != nil {
-		return e
-	}
-	if s.Exists {
-		return errors.New("resource remains after teardown")
-	}
-	return nil
 }

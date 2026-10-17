@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "timestamp": "2026-10-17T21:05:59.770267+00:00",
+  "timestamp": "2026-10-17T21:25:59.297828+00:00",
   "image": "sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36",
   "checks": [
     {
@@ -72,6 +72,10 @@
       "passed": true
     },
     {
+      "name": "status returns JSON success",
+      "passed": true
+    },
+    {
       "name": "watchdog survives broker SIGKILL",
       "passed": true
     },
@@ -108,7 +112,7 @@
       "passed": true
     }
   ],
-  "passed": 26,
+  "passed": 27,
   "provider_self_expiry": "unsupported: supervised external watchdog exception only",
   "limitations": [
     "No Jetstream2 or other live provider acceptance",

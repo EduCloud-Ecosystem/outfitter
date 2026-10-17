@@ -42,7 +42,7 @@ func (r Request) Validate() error {
 	if r.SchemaVersion != 1 || !ValidID(r.RequestID) || !ValidID(r.ProjectID) {
 		return errors.New("invalid schema or opaque identifier")
 	}
-	if !imageID.MatchString(r.Image) && !imageDigest.MatchString(r.Image) {
+	if len(r.Image) > 512 || (!imageID.MatchString(r.Image) && !imageDigest.MatchString(r.Image)) {
 		return errors.New("image must be an immutable local sha256 ID or digest")
 	}
 	if r.Isolation != "reviewed-local" {
@@ -68,9 +68,13 @@ func (r Request) Validate() error {
 		return errors.New("command empty or too large")
 	}
 	for _, p := range []string{r.InputDir, r.RecipeDir} {
-		if !filepath.IsAbs(p) || filepath.Clean(p) != p || strings.ContainsAny(p, ",\n\r") {
+		if len(p) > 4096 || !filepath.IsAbs(p) || filepath.Clean(p) != p || strings.ContainsAny(p, ",\n\r") {
 			return errors.New("mount directories must be clean absolute paths without comma or newline")
 		}
+	}
+	encoded, _ := json.Marshal(r)
+	if len(encoded) > 32768 {
+		return errors.New("encoded request exceeds metadata capacity")
 	}
 	return nil
 }
@@ -89,6 +93,7 @@ type Compute struct {
 	Provenance string `json:"provenance"`
 }
 type Receipt struct {
+	OutputError         string     `json:"output_error,omitempty"`
 	Admitted            bool       `json:"admitted"`
 	ExecutionStarted    bool       `json:"execution_started"`
 	SchemaVersion       int        `json:"schema_version"`
@@ -111,6 +116,8 @@ type Receipt struct {
 	TeardownRisk        string     `json:"teardown_risk"`
 }
 type Record struct {
+	OutputSHA256 string `json:"output_sha256,omitempty"`
+	OutputBytes  int64  `json:"output_bytes,omitempty"`
 	Receipt
 	Request         Request `json:"request"`
 	PayloadHash     string  `json:"payload_hash"`
