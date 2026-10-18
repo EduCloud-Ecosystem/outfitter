@@ -72,7 +72,8 @@ before merge. No test runs a guest or qualifies live Jetstream2 access.
 ## Cleanup and limitations
 
 The existing [offline rescue protocol](JETSTREAM2-OFFLINE-RESCUE.md) remains the
-sole cleanup path. Both signed scopes and durable ACKs are required. B receives
+sole cleanup path. Creation requires a signed scope and durable B ACK before
+each phase. B receives
 no experiment ledger reference and cannot admit, replenish, settle or refund A's
 reservation. B can clean eligible lost or late effects using its own retained
 scope while A is unavailable. An absence receipt remains observational and does
