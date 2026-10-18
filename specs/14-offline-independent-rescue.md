@@ -114,7 +114,10 @@ unavailable; it cannot rebuild or modify A's accounting.
 
 Receipts are signed observational records only, binding scope digests, observer,
 reservation, sequence, time, outcome and validated IDs. Provide bounded validation,
-but defer ledger ingestion and all settlement. No receipt changes a budget.
+including exact outcome membership in `SWEEP_INTENT`, `UNKNOWN` or
+`OBSERVED_ABSENT`; concatenations, empty values and terminal assertions are invalid
+even with a valid observer signature. Defer ledger ingestion and all settlement.
+No receipt changes a budget.
 
 ## Required offline evidence
 

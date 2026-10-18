@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -479,7 +478,9 @@ func ValidateRescueReceipt(raw, port, server []byte, p RescuePolicy, c Config) (
 	if (r.PortID != "" && !ref.MatchString(r.PortID)) || (r.ServerID != "" && (!ref.MatchString(r.ServerID) || r.ServerScopeHash == "")) {
 		return r, errors.New("invalid receipt resource identity")
 	}
-	if !strings.Contains("|SWEEP_INTENT|UNKNOWN|OBSERVED_ABSENT|", "|"+r.Outcome+"|") {
+	switch r.Outcome {
+	case "SWEEP_INTENT", "UNKNOWN", "OBSERVED_ABSENT":
+	default:
 		return r, errors.New("receipt cannot assert terminal cleanup")
 	}
 	return r, nil

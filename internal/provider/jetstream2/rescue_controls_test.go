@@ -259,3 +259,43 @@ func TestOfflineRescueReviewTransportRestrictions(t *testing.T) {
 		t.Fatal("trailing slash authentication", e)
 	}
 }
+
+func TestOfflineRescueReviewSignedReceiptOutcome(t *testing.T) {
+	r := setupRescue(t)
+	record := r.create(t)
+	r.future(record)
+	raw, e := r.b.Sweep(context.Background())
+	if e != nil {
+		t.Fatal(e)
+	}
+	base := r.receipt(t, raw)
+	for _, tc := range []struct {
+		outcome string
+		valid   bool
+	}{
+		{"SWEEP_INTENT", true},
+		{"UNKNOWN", true},
+		{"OBSERVED_ABSENT", true},
+		{"SWEEP_INTENT|UNKNOWN", false},
+		{"UNKNOWN|OBSERVED_ABSENT", false},
+		{"SWEEP_INTENT|UNKNOWN|OBSERVED_ABSENT", false},
+		{"", false},
+		{"|UNKNOWN", false},
+		{"UNKNOWN|", false},
+		{"OBSERVED_ABSENT ", false},
+		{"CLEANUP_VERIFIED", false},
+	} {
+		t.Run(tc.outcome, func(t *testing.T) {
+			receipt := base
+			receipt.Outcome = tc.outcome
+			signed, err := rescueSign("receipt", receipt, r.bKey)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = ValidateRescueReceipt(signed, []byte(record.Rescue.PortScope), []byte(record.Rescue.ServerScope), *r.j.policy.Rescue, r.c.config)
+			if (err == nil) != tc.valid {
+				t.Fatalf("signed outcome %q: valid=%t, error=%v", tc.outcome, tc.valid, err)
+			}
+		})
+	}
+}
