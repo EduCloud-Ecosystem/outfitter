@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "timestamp": "2026-10-18T03:03:42.893174+00:00",
+  "outcome": "PASS",
+  "error": null,
+  "image": "python@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36",
+  "scope": "local synthetic consumer contract; Cairn-shaped fixture only",
+  "concurrency": 1,
+  "per_job_limits": {
+    "cpus": 1,
+    "memory_mb": 256,
+    "pids_limit": 64,
+    "timeout_seconds": 30
+  },
+  "aggregate_budget_cpu_seconds": 151,
+  "checks": [
+    {
+      "name": "pinned image already installed",
+      "passed": true
+    },
+    {
+      "name": "preflight is pure and does not initialize authority",
+      "passed": true
+    },
+    {
+      "name": "correct fixture compute and explicit deterministic result",
+      "passed": true
+    },
+    {
+      "name": "same binding replays receipt with original input paths gone",
+      "passed": true
+    },
+    {
+      "name": "consumer-run refuses changed contract",
+      "passed": true
+    },
+    {
+      "name": "consumer-run refuses changed contract",
+      "passed": true
+    },
+    {
+      "name": "consumer-run refuses changed contract",
+      "passed": true
+    },
+    {
+      "name": "wrong-answer control remains a failed result despite successful compute",
+      "passed": true
+    },
+    {
+      "name": "concurrent duplicate has one fresh admission",
+      "passed": true
+    },
+    {
+      "name": "concurrent job ends with one 30-second charge",
+      "passed": true
+    },
+    {
+      "name": "killed-consumer fixture reached execution",
+      "passed": true
+    },
+    {
+      "name": "fresh process resolves killed consumer receipt and watchdog cleanup",
+      "passed": true
+    },
+    {
+      "name": "independent Docker observation confirms killed resource absent",
+      "passed": true
+    },
+    {
+      "name": "killed consumer replay never dispatches again",
+      "passed": true
+    },
+    {
+      "name": "same-path replacement after preflight refuses before launch",
+      "passed": true
+    },
+    {
+      "name": "insufficient allowance creates no job or resource",
+      "passed": true
+    },
+    {
+      "name": "finite harness budget exhausted by exactly five reservations",
+      "passed": true
+    },
+    {
+      "name": "held restore preserves receipt binding and read-only status",
+      "passed": true
+    },
+    {
+      "name": "missing diagnostics remain visible without changing accounting",
+      "passed": true
+    }
+  ],
+  "passed": 19,
+  "deterministic_controls": [
+    {
+      "fixture": "correct",
+      "expected_answer": 42,
+      "observed_answer": 42,
+      "deterministic_match": true,
+      "compute_status": "succeeded",
+      "grade_published": false
+    },
+    {
+      "fixture": "wrong",
+      "expected_answer": 42,
+      "observed_answer": 41,
+      "deterministic_match": false,
+      "compute_status": "succeeded",
+      "grade_published": false
+    }
+  ],
+  "emergency_cleanup": [],
+  "elapsed_seconds": 5.124,
+  "live_jetstream2": "BLOCKED pending separate approval; no calls/resources/spending",
+  "limitations": [
+    "No production Cairn wiring, real student data, course admission or grade publication",
+    "No native/provider qualification or host/watchdog/daemon-loss self-expiry",
+    "Conservative CPU-second reservations, not measured CPU or provider SUs",
+    "Mock ambiguity controls are in the Go test suite, not live provider evidence"
+  ],
+  "accepted_base_commit": "534dcf187158a28008fa07d3bb05c00f27b88165",
+  "source_sha256": {
+    "internal/consumer/consumer.go": "e81e241e4ca9e38d854e6c71423f4efdfdebceb0f7d7f8dc289b71181f1ac005",
+    "internal/consumer/consumer_test.go": "c695c3d80c06caeb13d7db29865831ce85fcbc943ef253933b0ee98903078ea5",
+    "internal/provider/consumer.go": "359061d817c8407e0abe3a0af88b78255bf9c0bc4ee6b65290a59612962077a7",
+    "internal/provider/provider.go": "1c7e4c3fdb99a23aab0352390c48578fd55ca52738e2ff278281400a367eb140",
+    "internal/broker/broker.go": "9456137a285e50b2cadeeb7a08398752b505f2bbd7d25593edcdd9f2a596117d",
+    "internal/broker/content.go": "01a5e298ca33082ae898430228a3bf02dd008722764128a239e5cf5c3877fab7",
+    "internal/broker/content_test.go": "2ea66fdff3c36cb176de166d95f7a44c6694529ef9ef467800edda53502305a6",
+    "internal/ledger/store.go": "280815d2e3b8f23db2586dc1cb23413c15d1fc2d9f73c7e317f7e48b1ecbb8d7",
+    "internal/ledger/native.go": "9615c61f5f778e64d11017f2cbb60f4e1a580c20c25306c692668f463ed99227",
+    "internal/ledger/recovery.go": "b49ca09ad850f9b54b0bb3fda8af63b0ac8b9de63246fa5e874c1f7bd045dcc2",
+    "cmd/outfitter/main.go": "02ee0c49e2cdd43e457811ca1c2bfec4d39c118c88e355e7f6661cd8afe3f3c8",
+    "scripts/verify_consumer.py": "3bc914e1656a5cdbbc7a9e605fde7e81bf685657c4586547aed190cb6a4bc6d0"
+  },
+  "changed_package_race_checks": {
+    "result": "PASS",
+    "packages": [
+      "internal/consumer",
+      "internal/broker",
+      "internal/ledger",
+      "internal/provider",
+      "cmd/outfitter"
+    ],
+    "log_sha256": "677c1d65558b7206c53702244ac81a96b3740fb1fa4adce3018e9c482f58a6bb"
+  },
+  "review_and_final_ci": "Independent exact-head review and full repository/Docker CI recorded on the PR before merge; this file records bounded local checks only."
+}

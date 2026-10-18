@@ -78,3 +78,7 @@ not Outfitter's — Outfitter provisions machines, not model calls.
 ## License
 
 Apache-2.0 (code), DCO sign-off required. See `LICENSING.md`.
+
+The [synthetic consumer handoff](docs/SYNTHETIC-CONSUMER-HANDOFF.md) adds one-attempt
+job bindings, pure preflight and receipt lookup to the local broker. Its fixture
+evidence does not authorize live Jetstream2 tests or production Cairn integration.

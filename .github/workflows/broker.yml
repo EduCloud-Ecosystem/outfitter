@@ -38,6 +38,8 @@ jobs:
         run: python3 scripts/verify_docker.py --image "$PYTHON_IMAGE" --output .runtime/docker-ci.json
       - name: Local recovery and fenced cutover acceptance
         run: python3 scripts/verify_recovery.py --image "$PYTHON_IMAGE" --output .runtime/recovery-ci.json
+      - name: Synthetic consumer contract acceptance
+        run: python3 scripts/verify_consumer.py --image "$PYTHON_IMAGE" --output .runtime/consumer-ci.json
       - name: Save sanitized local acceptance evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -47,5 +49,6 @@ jobs:
             .runtime/go-tests.jsonl
             .runtime/docker-ci.json
             .runtime/recovery-ci.json
+            .runtime/consumer-ci.json
           if-no-files-found: warn
           retention-days: 14

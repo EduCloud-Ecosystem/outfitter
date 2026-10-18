@@ -32,6 +32,9 @@ func New(s *ledger.Store, p provider.Provisioner) *Broker { return &Broker{Store
 func (b *Broker) Reserve(w provider.Request) (provider.Record, bool, error) {
 	var r provider.Record
 	fresh := false
+	if w.Consumer != nil && b.Provider.Name() != "docker" {
+		return r, false, errors.New("consumer supports only the local Docker profile")
+	}
 	ceiling, e := b.Provider.Estimate(w)
 	if e != nil {
 		return r, false, e
@@ -79,13 +82,16 @@ func (b *Broker) Reserve(w provider.Request) (provider.Record, bool, error) {
 				}
 			}
 		}
-		if all >= 4 || project >= 2 {
+		if all >= 4 || project >= 2 || (w.Consumer != nil && all > 0) {
 			return errors.New("active placement limit reached; reconcile unresolved work first")
 		}
 		now := time.Now().UTC()
 		h := sha256.Sum256([]byte(d.Owner + ":" + w.RequestID))
 		name := "outfitter-" + hex.EncodeToString(h[:16])
 		r = provider.Record{Receipt: provider.Receipt{Admitted: true, SchemaVersion: 1, RequestID: w.RequestID, ProjectID: w.ProjectID, Status: "reserved", Image: w.Image, CreatedAt: now, Deadline: now.Add(time.Duration(w.TimeoutSeconds) * time.Second), UnresolvedLiability: true, Compute: provider.Compute{Reserved: ceiling, Provenance: "reserved"}, TeardownRisk: "supervised external watchdog; no provider self-expiry"}, Request: w, PayloadHash: w.Hash(), Name: name, Owner: d.Owner, PID: os.Getpid()}
+		if w.Consumer != nil && d.Version < 4 {
+			d.Version = 4
+		}
 		d.Runs[w.RequestID] = r
 		fresh = true
 		return nil
@@ -107,25 +113,50 @@ func (b *Broker) change(id string, fn func(*provider.Record)) (provider.Record, 
 	return r, e
 }
 func (b *Broker) Run(ctx context.Context, w provider.Request) (provider.Receipt, error) {
-	release, leaseErr := b.Store.ExecutionLease()
-	if leaseErr != nil {
-		return provider.Receipt{}, leaseErr
+	receipt, _, e := b.RunOnce(ctx, w)
+	if errors.Is(e, ledger.ErrAdmission) {
+		return notAdmitted(w, e), nil
+	}
+	return receipt, e
+}
+
+// RunOnce exposes the admission transaction's replay decision to consumer envelopes.
+func (b *Broker) RunOnce(ctx context.Context, w provider.Request) (provider.Receipt, bool, error) {
+	release, e := b.Store.ExecutionLease()
+	if e != nil {
+		return provider.Receipt{}, false, e
 	}
 	defer release()
 	r, fresh, e := b.Reserve(w)
 	if e != nil {
-		if errors.Is(e, ErrBudget) || errors.Is(e, ledger.ErrAdmission) {
-			return provider.Receipt{SchemaVersion: 1, RequestID: w.RequestID, ProjectID: w.ProjectID, Status: "failed", Error: e.Error(), CleanupVerified: true, Image: w.Image, Compute: provider.Compute{Provenance: "not_admitted"}}, nil
+		if errors.Is(e, ErrBudget) {
+			return notAdmitted(w, e), false, nil
 		}
-		return r.Receipt, e
+		return r.Receipt, false, e
 	}
 	if !fresh {
-		return b.Store.Receipt(r.RequestID)
+		receipt, e := b.Store.Receipt(r.RequestID)
+		return receipt, true, e
 	}
+	receipt, e := b.executeReserved(ctx, w, r)
+	return receipt, false, e
+}
+func notAdmitted(w provider.Request, e error) provider.Receipt {
+	return provider.Receipt{SchemaVersion: 1, RequestID: w.RequestID, ProjectID: w.ProjectID, Status: "failed", Error: e.Error(), CleanupVerified: true, Image: w.Image, Compute: provider.Compute{Provenance: "not_admitted"}}
+}
+func (b *Broker) executeReserved(ctx context.Context, w provider.Request, r provider.Record) (provider.Receipt, error) {
 	// Snapshots are private host artifacts, never writable by the workload.
 	in, recipe, e := snapshot(b.Store.Dir, w)
 	if e != nil {
 		return b.finish(r.RequestID, "failed", "input snapshot refused: "+e.Error(), nil, "", "", false)
+	}
+	if w.Consumer != nil {
+		if e = verifyContent(in, w.Consumer.InputFiles); e == nil {
+			e = verifyContent(recipe, w.Consumer.RecipeFiles)
+		}
+		if e != nil {
+			return b.finish(r.RequestID, "failed", "consumer snapshot does not match bound content: "+e.Error(), nil, "", "", false)
+		}
 	}
 	if b.StartWatchdog == nil {
 		return b.finish(r.RequestID, "failed", "no independent watchdog configured", nil, "", "", false)

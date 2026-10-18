@@ -135,7 +135,9 @@ func (s *Store) InitNativeAccount(a NativeAccount) error {
 		if d.NativeRuns == nil {
 			d.NativeRuns = map[string]NativeRecord{}
 		}
-		d.Version = 3
+		if d.Version < 3 {
+			d.Version = 3
+		}
 		d.NativeAccounts[a.ID] = a
 		return nil
 	})
