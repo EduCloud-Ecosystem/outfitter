@@ -1,0 +1,55 @@
+{
+  "format": "outfitter-storage-writers-review-history-v1",
+  "scope": "offline qualification; no runtime or active-pin change",
+  "review_gate": "Candidate changed after independent model finding; fresh independent/root review and exact-head CI required before merge",
+  "preserved_findings": [
+    {
+      "source": "implementer source check and independent spec reviewer",
+      "at_commit": "ab601f2f4aeeb29ca8433c5ede4c5b48901916d4",
+      "finding": "Compact-record refusal wording could imply normal CLI reachability of production 96 KiB cap despite bounded request/receipt fields.",
+      "resolution": "Separate 1-byte injected cap ordering control. Production 98,304-byte cap reachability remains NOT_DEMONSTRATED. Ordinary serializer amplification has its own connected control."
+    },
+    {
+      "source": "coordinating root review",
+      "at_commit": "ab601f2f4aeeb29ca8433c5ede4c5b48901916d4",
+      "finding": "Destination failure after source fence does not necessarily leave both authorities non-admitting: directory sync can fail after rename published active destination.",
+      "resolution": "Spec distinguishes pre-publication held state from post-publication active/uncertain state. New connected destination directory-sync fault control verifies source fenced, destination visibly active and retry idempotence; future admission fencing remains a requirement."
+    },
+    {
+      "source": "initial local qualification run",
+      "evidence": "initial-failed/report.json",
+      "finding": "Snapshot-growth injection failed to reach hook because macOS canonical source path differed from noncanonical temporary path. Fake provider create occurred once; the expected growth refusal was not exercised.",
+      "resolution": "Canonicalize the declared source path before matching the after-stat hook. Require the hook reached, exact expected content/hash/length, partial entry count and zero fake provider creates. Original failed report/log preserved; no live provider was called."
+    },
+    {
+      "source": "second independent qualification review",
+      "at_commit": "e0eff0bc74b2ed35420a98d43cab7edb13258e56",
+      "evidence": "model-review-failed.json",
+      "finding": "Candidate model used Python truthiness; UNKNOWN and integer1 admitted as terminal/closed/known/reusable proofs. Eight negative probes reproduced false acceptance.",
+      "resolution": "Require all four flags to be exactly Boolean True, with eight added negative controls. Model remains unenforced and production runtime unaffected. Prior successful model evidence retained as historical, not final clearance."
+    },
+    {
+      "source": "second independent qualification review",
+      "at_commit": "e0eff0bc74b2ed35420a98d43cab7edb13258e56",
+      "evidence": "model-optimized-failed.json",
+      "finding": "Python -O removes assert qualification gates. Always-accept model mutation returned normal report with13negative controls falsely accepted.",
+      "resolution": "Explicit raises replace assert statements. Two deliberate always-accept/always-reject mutations must fail in an actual optimized Python subprocess. Retained old report is superseded for model clearance."
+    }
+  ],
+  "boundaries": {
+    "whole_root_envelope": "UNKNOWN",
+    "quota_enforced": false,
+    "active_pin_changed": false,
+    "jetstream2_live": "BLOCKED_ENGINEERING_OPERATIONAL_AND_SEPARATE_USER_APPROVAL",
+    "waypoint_fifth_headroom_failure": "FAIL_UNCHANGED"
+  },
+  "superseded_clearance": {
+    "head": "e0eff0bc74b2ed35420a98d43cab7edb13258e56",
+    "review": "coordinating root initially CLEAR for qualification-only; superseded by second independent model/oracle findings",
+    "ci_run": 39109191708,
+    "ci_conclusion": "SUCCESS at old head; not final candidate clearance",
+    "preserved_report": "qualified-v1/report.json",
+    "report_sha256": "b5de42a70a236b7ef957792204b1ae8931070c79b4bc390bc05e0f96f8de8894",
+    "model_source": "model-before-review.py"
+  }
+}

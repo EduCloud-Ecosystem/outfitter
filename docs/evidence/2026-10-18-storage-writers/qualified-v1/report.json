@@ -1,0 +1,419 @@
+{
+  "active_broker_pin": "5827c84e9952cc67b85e91ceff4282e0ead6923b",
+  "active_source_archive_sha256": "8a47a2428a1626cdb7c4e1388dd524c25863c2dde335bd960d1cacef2cbc0ca8",
+  "all_writers_complete": false,
+  "artifact_hashes": {
+    "go-stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "go-tests.jsonl": "0f33c5ed92aec70ca89d67deea1240f3d863a979f1434eda42a8597cbfc4efc1",
+    "instrumentation.json": "a108d6513c88b25ae3f2da45f017204ff740af43e83b7811dcdb17d981d4978e"
+  },
+  "available_capacity": "UNKNOWN",
+  "candidate_model": {
+    "cases": [
+      {
+        "accepted_by_model": true,
+        "id": "exact-boundary"
+      },
+      {
+        "accepted_by_model": false,
+        "id": "wrong-authority"
+      },
+      {
+        "accepted_by_model": false,
+        "id": "wrong-incarnation"
+      },
+      {
+        "accepted_by_model": false,
+        "id": "nonterminal-writer"
+      },
+      {
+        "accepted_by_model": false,
+        "id": "open-handles"
+      },
+      {
+        "accepted_by_model": false,
+        "id": "same-length-corruption"
+      },
+      {
+        "accepted_by_model": false,
+        "id": "unowned-growth"
+      },
+      {
+        "accepted_by_model": false,
+        "id": "missing-path-is-not-release"
+      },
+      {
+        "accepted_by_model": false,
+        "id": "unknown-writer"
+      },
+      {
+        "accepted_by_model": false,
+        "id": "unproven-scratch-reuse"
+      },
+      {
+        "accepted_by_model": false,
+        "id": "unknown-scratch-bytes"
+      },
+      {
+        "accepted_by_model": false,
+        "id": "unknown-entries"
+      },
+      {
+        "accepted_by_model": false,
+        "id": "byte-peak-exceeds-limit"
+      },
+      {
+        "accepted_by_model": false,
+        "id": "entry-peak-exceeds-limit"
+      }
+    ],
+    "production_observation_connection": "none; candidate ownership rule only",
+    "status": "MODEL_ONLY_NOT_ENFORCED"
+  },
+  "command": [
+    "go",
+    "test",
+    "-race",
+    "-json",
+    "-count=1",
+    "-timeout=90s",
+    "./internal/broker",
+    "./internal/ledger",
+    "-run",
+    "^(TestStorageWriter|TestRecoveryCrashAfterFenceLeavesBothNonAdmittingAndRetryable$)"
+  ],
+  "contract_sha256": "4e87eb642897e30cda868e361672c8a499328395c0b8506c9e7c6e87f0b5dbc2",
+  "duration_seconds": 16.452,
+  "exit_code": 0,
+  "format": "outfitter-storage-writer-qualification-v1",
+  "go_test_counts": {
+    "fail": 0,
+    "pass": 22,
+    "skip": 0
+  },
+  "instrumented_source_hashes": {
+    "internal/broker/broker.go": "396bb9001cc61c300750d8335e68b2b2e70e461e7aedfd50d828e50eb9853eb8",
+    "internal/ledger/store.go": "44d1bddd630ad5c187c4484bc4a00831031325b60f9b6403a206ee0a3245f3c4",
+    "internal/qualification/hooks.go": "fd0c5d9fe01a8f644068ab235b3fda4c72fedb6e3c2ae87ffe97e2647cdb162c"
+  },
+  "main_comparison_pin": "e9c18f970bae38aef7254b90f1465dadd64673d5",
+  "main_source_comparison": {
+    "cmd/outfitter/main.go": {
+      "same_as_active": false,
+      "sha256": "02ee0c49e2cdd43e457811ca1c2bfec4d39c118c88e355e7f6661cd8afe3f3c8"
+    },
+    "go.mod": {
+      "same_as_active": true,
+      "sha256": "bcf81d648b7f769adf99a0864b64701f350d46d3784c8b1c24fc55fbeccb341f"
+    },
+    "internal/broker/broker.go": {
+      "same_as_active": false,
+      "sha256": "9456137a285e50b2cadeeb7a08398752b505f2bbd7d25593edcdd9f2a596117d"
+    },
+    "internal/broker/broker_test.go": {
+      "same_as_active": true,
+      "sha256": "b63d8132d3f8d115b8f6fa415eba3a2f32336a259864ed47466e870eef378162"
+    },
+    "internal/broker/recovery_test.go": {
+      "same_as_active": true,
+      "sha256": "e243cdddeb4beeaef413a4c19f652764e9d99b4f386fd4d22cbf6c376592331a"
+    },
+    "internal/broker/review_regressions_test.go": {
+      "same_as_active": true,
+      "sha256": "4ecd65dab7c483c89d3f4292c74b2fb4d3f6e4191668dfb6fcd6e272e56486eb"
+    },
+    "internal/ledger/recovery.go": {
+      "same_as_active": false,
+      "sha256": "b49ca09ad850f9b54b0bb3fda8af63b0ac8b9de63246fa5e874c1f7bd045dcc2"
+    },
+    "internal/ledger/recovery_test.go": {
+      "same_as_active": true,
+      "sha256": "ad28e656efbd9e4ec1a773b87f3fa0a773eabb5879dbe540a3cb4ef5bd7e0ac0"
+    },
+    "internal/ledger/store.go": {
+      "same_as_active": false,
+      "sha256": "1d948e3bd05a353225efcd0338d2d8dae5670cada2bd00092b5ca9b46351f89c"
+    },
+    "internal/provider/docker/docker.go": {
+      "same_as_active": true,
+      "sha256": "c3bbc553674547b6ad7bbcc9b485616ae4c0cc099222468e1737ba7802ffa581"
+    },
+    "internal/provider/provider.go": {
+      "same_as_active": false,
+      "sha256": "1c7e4c3fdb99a23aab0352390c48578fd55ca52738e2ff278281400a367eb140"
+    }
+  },
+  "not_run": [
+    "physical ENOSPC/inode exhaustion",
+    "host crash or power loss",
+    "failed temp removal and retained scratch accumulation",
+    "actual CLI watchdog launcher",
+    "Docker daemon/provider",
+    "live Jetstream2",
+    "complete independent writer discovery",
+    "enforced destination peak refusal",
+    "production quota enforcement"
+  ],
+  "preserved_failure_sha256": "763ec3e001ef50512fca925efe24b2f6878141f7b448b2ecb495a5b2b7db2957",
+  "preserved_fifth_failure": "FAIL/BLOCKER_REPRODUCED in upstream evidence; not repaired here",
+  "qualification_source_hashes": {
+    "README.md": "f94dbb069ac1bd8e1b52f8c2f9be91d1121f8a932dcb8942d6da5a6b8d6fca4b",
+    "finite_model.py": "cf6bc73eef8bb5ff94ffeec298daccbcce1e0acee50b5b0a2679cc2092f43575",
+    "overlays/internal/broker/storage_writers_test.go": "e52d943819f2dbc6957b5231c6415147ec6da80377da7eb0ccec2c525f94417b",
+    "overlays/internal/ledger/storage_writers_test.go": "35ad3ae28e8f4c5952068a5e936702ac2c6ec8860a78611fbd9ba26e3808db71",
+    "overlays/internal/qualification/hooks.go": "fd0c5d9fe01a8f644068ab235b3fda4c72fedb6e3c2ae87ffe97e2647cdb162c",
+    "run.py": "9d776770d1ec7c36c4a5baef3e824dcf0373f71f2a7b4a88e837bd0a7401f0cb",
+    "upstream/fifth-headroom-failure.json": "763ec3e001ef50512fca925efe24b2f6878141f7b448b2ecb495a5b2b7db2957",
+    "upstream/waypoint-contract-v1.json": "4e87eb642897e30cda868e361672c8a499328395c0b8506c9e7c6e87f0b5dbc2"
+  },
+  "qualification_status": "PASS_COUNTEREXAMPLES_REPRODUCED",
+  "quota_enforced": false,
+  "runtime_changed": false,
+  "toolchain": "go version go1.26.4 darwin/arm64",
+  "verified_active_source_hashes": {
+    "cmd/outfitter/main.go": "62745a03b53daf375c93e2503044f862ca6cdad3d9be2f49ff28ade24ca136db",
+    "go.mod": "bcf81d648b7f769adf99a0864b64701f350d46d3784c8b1c24fc55fbeccb341f",
+    "internal/broker/broker.go": "2f9511aebd21cad90eb8f1acdf326ec17b1b6d6b38a307e32a07c7aa8028721c",
+    "internal/broker/broker_test.go": "b63d8132d3f8d115b8f6fa415eba3a2f32336a259864ed47466e870eef378162",
+    "internal/broker/recovery_test.go": "e243cdddeb4beeaef413a4c19f652764e9d99b4f386fd4d22cbf6c376592331a",
+    "internal/broker/review_regressions_test.go": "4ecd65dab7c483c89d3f4292c74b2fb4d3f6e4191668dfb6fcd6e272e56486eb",
+    "internal/ledger/recovery.go": "7cdc7e2d91cade3e14a18036c2bccd23b97e669154dbdee23fec06da9ebbbd96",
+    "internal/ledger/recovery_test.go": "ad28e656efbd9e4ec1a773b87f3fa0a773eabb5879dbe540a3cb4ef5bd7e0ac0",
+    "internal/ledger/store.go": "2243e2e9c9f40dff06ce82478bf96729b642a2323f3cca3fd929b26b3f00776a",
+    "internal/provider/docker/docker.go": "c3bbc553674547b6ad7bbcc9b485616ae4c0cc099222468e1737ba7802ffa581",
+    "internal/provider/provider.go": "8d96ea6c07987e957ad9a482a1f7f23e94046cbd4c4f9af849e161555c61b2bf"
+  },
+  "waypoint_contract_head": "e543ca4e8a388bb71fe96e11e12b6765829e4a29",
+  "whole_root_envelope": "UNKNOWN",
+  "witnesses": [
+    {
+      "id": "repeated-spill-before-ledger-failure",
+      "observations": {
+        "attempts": 3,
+        "fault": "injected pre-file-sync error; no physical exhaustion",
+        "prior_authority_unchanged": true,
+        "retained_distinct_orphans": 3,
+        "unknown_cpu_seconds": 30
+      },
+      "production_property": "FAIL"
+    },
+    {
+      "id": "spill-before-lowered-compact-limit",
+      "observations": {
+        "ordered_refusal_reproduced": true,
+        "ordinary_cli_reachability": "NOT_DEMONSTRATED",
+        "production_limit": 98304,
+        "test_limit": 1
+      },
+      "production_property": "NOT_DEMONSTRATED_AT_NORMAL_LIMIT"
+    },
+    {
+      "id": "encoded-output-and-same-digest-overlap",
+      "observations": {
+        "encoded_bytes": 6291481,
+        "encoding": "Go JSON NUL escaping",
+        "observed_output_peak_bytes": 12582962,
+        "raw_bytes": 1048576,
+        "two_simultaneous_encoded_files": true
+      },
+      "production_property": "FAIL"
+    },
+    {
+      "id": "publication-ledger-file-sync",
+      "observations": {
+        "charged_cpu_seconds": 0,
+        "durability": "NOT_PROVED for post-rename directory-sync fault",
+        "injected": true,
+        "new_generation_visible": false,
+        "prior_ledger_bytes_unchanged": true,
+        "retained_output_files": 1,
+        "unknown_liability": true
+      },
+      "production_property": "BOUNDED_OBSERVATION"
+    },
+    {
+      "id": "publication-ledger-rename",
+      "observations": {
+        "charged_cpu_seconds": 0,
+        "durability": "NOT_PROVED for post-rename directory-sync fault",
+        "injected": true,
+        "new_generation_visible": false,
+        "prior_ledger_bytes_unchanged": true,
+        "retained_output_files": 1,
+        "unknown_liability": true
+      },
+      "production_property": "BOUNDED_OBSERVATION"
+    },
+    {
+      "id": "publication-ledger-directory-sync",
+      "observations": {
+        "charged_cpu_seconds": 30,
+        "durability": "NOT_PROVED for post-rename directory-sync fault",
+        "injected": true,
+        "new_generation_visible": true,
+        "prior_ledger_bytes_unchanged": false,
+        "retained_output_files": 1,
+        "unknown_liability": false
+      },
+      "production_property": "BOUNDED_OBSERVATION"
+    },
+    {
+      "id": "publication-output-file-sync",
+      "observations": {
+        "charged_cpu_seconds": 30,
+        "durability": "NOT_PROVED for post-rename directory-sync fault",
+        "injected": true,
+        "new_generation_visible": true,
+        "prior_ledger_bytes_unchanged": false,
+        "retained_output_files": 0,
+        "unknown_liability": false
+      },
+      "production_property": "BOUNDED_OBSERVATION"
+    },
+    {
+      "id": "publication-output-rename",
+      "observations": {
+        "charged_cpu_seconds": 30,
+        "durability": "NOT_PROVED for post-rename directory-sync fault",
+        "injected": true,
+        "new_generation_visible": true,
+        "prior_ledger_bytes_unchanged": false,
+        "retained_output_files": 0,
+        "unknown_liability": false
+      },
+      "production_property": "BOUNDED_OBSERVATION"
+    },
+    {
+      "id": "snapshot-entry-partial",
+      "observations": {
+        "charged_cpu_seconds": 30,
+        "provider_creates": 0,
+        "retained_bytes": 16,
+        "retained_entries_including_snapshot_parent_and_request_dir": 1026,
+        "walked_entries_before_refusal": 1024
+      },
+      "production_property": "FAIL"
+    },
+    {
+      "id": "publication-output-directory-sync",
+      "observations": {
+        "charged_cpu_seconds": 30,
+        "durability": "NOT_PROVED for post-rename directory-sync fault",
+        "injected": true,
+        "new_generation_visible": true,
+        "prior_ledger_bytes_unchanged": false,
+        "retained_output_files": 1,
+        "unknown_liability": false
+      },
+      "production_property": "BOUNDED_OBSERVATION"
+    },
+    {
+      "id": "legacy-open-is-writer",
+      "observations": {
+        "after_version": 2,
+        "before_version": 1,
+        "new_output_files": 1,
+        "unknown_cpu_seconds": 30
+      },
+      "production_property": "FAIL"
+    },
+    {
+      "id": "checkpoint-reference-only-under-exclusive-execution-lease",
+      "observations": {
+        "checkpoint_regular_files": 3,
+        "execution_exclusive_did_not_fence_checkpoint": true,
+        "unknown_source_files_preserved_and_excluded": 4,
+        "whole_root_capacity": "UNKNOWN"
+      },
+      "production_property": "FAIL"
+    },
+    {
+      "id": "checkpoint-corrupt-reference-retains-partial",
+      "observations": {
+        "capacity_credit": 0,
+        "partial_destination_retained": true,
+        "retry_same_path_refused": true,
+        "same_length_corruption_refused": true
+      },
+      "production_property": "PASS"
+    },
+    {
+      "id": "activation-error-can-leave-destination-active",
+      "observations": {
+        "both_roots_preserved": true,
+        "destination_admission_visible": "active",
+        "durability": "UNKNOWN",
+        "error_does_not_prove_both_nonadmitting": true,
+        "injected": "destination directory sync after rename",
+        "retry_idempotent": true,
+        "source_admission": "fenced"
+      },
+      "production_property": "FAIL"
+    },
+    {
+      "id": "snapshot-growth-retains-probe-byte",
+      "observations": {
+        "charged_cpu_seconds": 30,
+        "declared_copy_limit": 16777216,
+        "injected": "source grows after production stat, before open/copy",
+        "provider_creates": 0,
+        "retained_bytes": 16777217,
+        "retained_entries": 4
+      },
+      "production_property": "FAIL"
+    },
+    {
+      "id": "snapshot-cancellation-is-not-writer-completion",
+      "observations": {
+        "checkpoint_completed_while_copy_blocked": true,
+        "checkpoint_unresolved_requests": 1,
+        "copy_terminal_observed_separately": true,
+        "copy_wrote_after_context_cancel": true,
+        "provider_creates": 0
+      },
+      "production_property": "FAIL"
+    },
+    {
+      "id": "watch-ready-outside-locks-and-cancel-blocked",
+      "observations": {
+        "cancelled_watch_waited_for_ledger_unlock": true,
+        "process_wait_confirmed": true,
+        "ready_written_under_exclusive_execution_and_ledger_locks": true,
+        "stale_ready_overwritten": true,
+        "unknown_cpu_seconds": 30
+      },
+      "production_property": "FAIL"
+    },
+    {
+      "id": "duplicate-watch-shared-ready",
+      "observations": {
+        "both_processes_waited": true,
+        "one_exit_removed_other_live_owner_ready": true,
+        "simultaneous_watch_processes": 2
+      },
+      "production_property": "FAIL"
+    },
+    {
+      "id": "requester-exit-does-not-stop-watch-writes",
+      "observations": {
+        "actual_cli_launcher": "NOT_RUN",
+        "provider": "fake",
+        "requester_exit_waited": true,
+        "unknown_cpu_seconds": 30,
+        "watch_exit_waited_separately": true,
+        "watch_ledger_generations_after_requester_exit": 3
+      },
+      "production_property": "FAIL"
+    },
+    {
+      "id": "settled-cutover-does-not-fence-watch-ready",
+      "observations": {
+        "charged_cpu_seconds": 30,
+        "process_wait_confirmed_separately": true,
+        "source_admission": "fenced",
+        "watch_ready_written_after_cutover": true
+      },
+      "production_property": "FAIL"
+    }
+  ]
+}

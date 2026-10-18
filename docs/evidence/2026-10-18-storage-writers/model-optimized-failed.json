@@ -1,0 +1,62 @@
+{
+  "reviewed_head": "e0eff0bc74b2ed35420a98d43cab7edb13258e56",
+  "interpreter_flag": "-O",
+  "fault": "admit replaced with always-True function in disposable module load",
+  "status": "FAIL_REPRODUCED",
+  "incorrectly_accepted_negative_controls": [
+    {
+      "id": "wrong-authority",
+      "accepted_by_model": true
+    },
+    {
+      "id": "wrong-incarnation",
+      "accepted_by_model": true
+    },
+    {
+      "id": "nonterminal-writer",
+      "accepted_by_model": true
+    },
+    {
+      "id": "open-handles",
+      "accepted_by_model": true
+    },
+    {
+      "id": "same-length-corruption",
+      "accepted_by_model": true
+    },
+    {
+      "id": "unowned-growth",
+      "accepted_by_model": true
+    },
+    {
+      "id": "missing-path-is-not-release",
+      "accepted_by_model": true
+    },
+    {
+      "id": "unknown-writer",
+      "accepted_by_model": true
+    },
+    {
+      "id": "unproven-scratch-reuse",
+      "accepted_by_model": true
+    },
+    {
+      "id": "unknown-scratch-bytes",
+      "accepted_by_model": true
+    },
+    {
+      "id": "unknown-entries",
+      "accepted_by_model": true
+    },
+    {
+      "id": "byte-peak-exceeds-limit",
+      "accepted_by_model": true
+    },
+    {
+      "id": "entry-peak-exceeds-limit",
+      "accepted_by_model": true
+    }
+  ],
+  "normal_report_returned": true,
+  "production_affected": false
+}
