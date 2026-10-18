@@ -1,0 +1,278 @@
+{
+  "schema_version": 1,
+  "document_type": "operational_decision_supplement_not_executable",
+  "status": "BLOCKED",
+  "prepared_on": "2026-10-17",
+  "timezone": "America/Los_Angeles",
+  "accepted_source": "2ce00f4950122890a6bcb792ee29e51127ad76c2",
+  "packet": "docs/JETSTREAM2-OPERATIONAL-DECISIONS.md",
+  "approvals": {
+    "architecture": false,
+    "credential_access_or_creation": false,
+    "authenticated_provider_inspection": false,
+    "host_or_network_qualification": false,
+    "provisioning": false,
+    "live_test": false,
+    "additional_cost": false,
+    "deployment": false
+  },
+  "guest_execution": "NOT_RUN",
+  "live_readiness": "BLOCKED",
+  "recommended_route": {
+    "status": "PROPOSED_NOT_SELECTED",
+    "allocation": "Existing approved CPU allocation nominated by Greg with PI permission",
+    "flavor_candidate": "m3.tiny",
+    "image_candidate": "Featured-Ubuntu24",
+    "site_preference": "Indiana University",
+    "primary_host": "Existing approved A with private route to worker and sole accounting authority",
+    "cleanup_host": "Existing independent B; sole automated cleanup executor with no ledger writer or guest key",
+    "guest_access": "Restricted SSH to fixed private address; exact host key authenticated through approved provider console",
+    "bootstrap": "Pinned reviewed nonsecret cloud-init with dedicated non-root account and root-owned forced-command receiver",
+    "bootstrap_implemented": false,
+    "guest_transport_implemented": false,
+    "runtime_package_downloads": false,
+    "one_shot_guest_execution": "Durable consumption before the pinned synthetic recipe; unknown receipt cannot authorize replay",
+    "guest_limits_proposed": {
+      "input_bytes": 16384,
+      "combined_output_bytes": 4096,
+      "execution_seconds": 30,
+      "within_original_worker_deadline": true
+    },
+    "recipe": "print(6 * 7)",
+    "expected_result": "42",
+    "data": "public/synthetic only",
+    "credentials_in_guest_or_metadata": false
+  },
+  "selected": {
+    "allocation_id": null,
+    "pi_permission": null,
+    "primary_operator": null,
+    "independent_rescue_operator": null,
+    "credential_custodian": null,
+    "primary_host": null,
+    "cleanup_host": null,
+    "failure_domain_evidence": null,
+    "private_route": null,
+    "coverage": null,
+    "project_id": null,
+    "region": null,
+    "auth_url": null,
+    "service_catalog": null,
+    "cpu_entitlement": null,
+    "remaining_milli_su": null,
+    "allocation_expiry": null,
+    "image_uuid": null,
+    "image_hash": null,
+    "image_platform_and_packages": null,
+    "flavor_uuid": null,
+    "observed_flavor_dimensions": null,
+    "network_id": null,
+    "subnet_id": null,
+    "router_id": null,
+    "security_group_id": null,
+    "complete_rules": null,
+    "quota": null,
+    "capacity_evidence": null,
+    "credential_policy": null,
+    "clock_health_policy": null,
+    "late_effect_continuation": null,
+    "provider_terminal_outcome_evidence": null
+  },
+  "candidates_not_entitlements": [
+    "SOC250004",
+    "Ben Markwart's approved CPU allocation"
+  ],
+  "proposed_experiment": {
+    "workers": 1,
+    "concurrency": 1,
+    "total_create_attempts": 1,
+    "max_lifetime_seconds": 600,
+    "reservation_milli_su": 1000,
+    "aggregate_native_allowance_milli_su": 1000,
+    "rate_milli_su_per_hour": 1000,
+    "rate_checked_on": "2026-10-17",
+    "nominal_estimate_su": 0.16666666666666666,
+    "minimum_rounded_reservation_milli_su": 167,
+    "provider_enforced_cap_milli_su": null,
+    "maximum_overrun_milli_su": null,
+    "settled_charge_milli_su": null,
+    "dollar_price": null,
+    "new_volumes": 0,
+    "new_snapshots": 0,
+    "new_floating_ips": 0,
+    "new_networks": 0,
+    "gpu_workers": 0,
+    "start": null,
+    "latest_admission": null,
+    "absolute_expiry": null,
+    "request_lifetime_seconds": null,
+    "window_rule": "Freeze latest_admission + request_lifetime <= absolute_expiry, max lifetime 600 seconds; never alter a bound request or roll forward expiry",
+    "historical_window": "Original October 20 proposal unchanged; not selected, scheduled or approved",
+    "scheduled": false
+  },
+  "cleanup": {
+    "scope": "Exact owned server then port; two phase-specific durable ACKs before respective creation POSTs",
+    "minimum_sweep_interval_seconds_proposed": 15,
+    "max_persisted_sweeps": 64,
+    "immediate_alert_on_failure": true,
+    "unresolved_escalation_seconds_after_expiry_proposed": 300,
+    "offline_clock_tolerance_seconds": 1,
+    "max_utc_error_ms_per_host_proposed": 250,
+    "actual_clock_bound_verified": false,
+    "independent_host_qualified": false,
+    "late_effect_gate": "OPEN; requires reviewed continuation beyond watch/credential/sweep bounds or supported terminal provider evidence before live approval",
+    "at_capacity": "Retain scopes and liability; hand off to reviewed operator procedure, never reset/replenish sweep state",
+    "absence_is_terminal": false,
+    "receipts_allow_settlement_or_refund": false,
+    "recovery": "Original ledger remains sole authority; preserve consumed attempt, held recovery and separate immutable B scopes",
+    "rollback_limit": "No global prevention of hostile administrator rollback or identical-path copied hosts"
+  },
+  "software_prerequisites": [
+    "Production experiment/live launcher contract preserving exact atomic one-attempt and pre-POST enforcement; existing experiment/rescue constructors are loopback-only",
+    "Authenticated selected-provider evidence collection and strict binding, completeness and freshness checks integrated with actual admission/effects",
+    "Pinned image/bootstrap, verified host identity, private SSH and bounded durable one-shot guest receiver",
+    "Independent authenticated A-B delivery/ACK transport, custody, monitored clocks, recovery and alerts",
+    "Reviewed late-effect and 64-sweep exhaustion continuation with credential/coverage plan; no false terminal absence",
+    "Exact-method qualification runbook, retained evidence and provider accounting; ambiguity remains unsettled"
+  ],
+  "retained_limits": {
+    "experiment_envelope_bytes": 8192,
+    "profile_bytes": 2048,
+    "snapshot_bytes": 4096,
+    "rules_each": 8,
+    "native_policy_bytes": 16384,
+    "native_state_bytes": 16384,
+    "inventory_records": 1000,
+    "paginated_inventory": "refuse unless separately engineered and reviewed"
+  },
+  "authorization_sequence": [
+    "architecture_selection",
+    "credential_and_read_only_evidence",
+    "separate_operational_qualification",
+    "frozen_finite_provisioning_and_live_test"
+  ],
+  "cost_classification": {
+    "additional_subscription": "NONE_DEMONSTRATED_NECESSARY",
+    "existing_hosts_route_storage_operator_time": "UNKNOWN_INCREMENTAL_COST_AND_CAPACITY; excluded from worker reservation",
+    "new_host_network_backup_or_access_infrastructure": "CONDITIONAL_NEW_PRICED_DECISION",
+    "kubernetes_managed_secrets_monitoring_paid_vpn_queue": "OPTIONAL_NOT_DEPENDENCIES",
+    "extra_resources_or_attempts": "EXCLUDED_NEW_RESOURCE_AND_COST_DECISION",
+    "provider_charge_cap": "UNVERIFIED; 1 SU is local reservation, not provider-enforced cap"
+  },
+  "baseline_acceptance": {
+    "pr": 13,
+    "reviewed_head": "e10972e7650ff88b0fdfdb86833e592f66aa400b",
+    "ci_url": "https://github.com/EduCloud-Ecosystem/outfitter/actions/runs/39102893358",
+    "tests_and_subtests": 736,
+    "docker_checks": 26,
+    "recovery_checks": 38,
+    "consumer_checks": 19,
+    "scope": "prior synthetic/offline and local Docker evidence; not rerun for this documentation packet"
+  },
+  "assignments": {
+    "issues": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "assignee": "bmarkwart",
+    "state_observed": "OPEN",
+    "checked_on": "2026-10-17",
+    "unchanged": true
+  },
+  "sources": [
+    {
+      "id": "flavor",
+      "url": "https://docs.jetstream-cloud.org/general/vmsizes/",
+      "checked_on": "2026-10-17",
+      "scope": "Published m3.tiny dimensions and native SU rate; exact selected-region flavor unverified"
+    },
+    {
+      "id": "usage",
+      "url": "https://docs.jetstream-cloud.org/general/access/",
+      "checked_on": "2026-10-17",
+      "scope": "Credit/SU exchange, reporting lag, stopped/suspended/shelved charges; not a charge cap"
+    },
+    {
+      "id": "allocation",
+      "url": "https://docs.jetstream-cloud.org/alloc/overview/",
+      "checked_on": "2026-10-17",
+      "scope": "Valid allocation membership required; no selected allocation record accessed"
+    },
+    {
+      "id": "quota",
+      "url": "https://docs.jetstream-cloud.org/general/quotas/",
+      "checked_on": "2026-10-17",
+      "scope": "Allocation-wide limits; no current quota or capacity observed"
+    },
+    {
+      "id": "image",
+      "url": "https://docs.jetstream-cloud.org/general/featured/",
+      "checked_on": "2026-10-17",
+      "scope": "Maintained changing Featured-Ubuntu24 candidate; no UUID or image qualification"
+    },
+    {
+      "id": "network",
+      "url": "https://docs.jetstream-cloud.org/ui/cli/network/",
+      "checked_on": "2026-10-17",
+      "scope": "Private guest connectivity requires an existing route; no route observed"
+    },
+    {
+      "id": "security_group",
+      "url": "https://docs.jetstream-cloud.org/ui/horizon/security_group/",
+      "checked_on": "2026-10-17",
+      "scope": "Ingress/egress policy and defaults; no effective filtering observed"
+    },
+    {
+      "id": "credentials",
+      "url": "https://docs.jetstream-cloud.org/ui/cli/auth/",
+      "checked_on": "2026-10-17",
+      "scope": "Allocation-specific private application credentials; no credential handling performed"
+    },
+    {
+      "id": "least_privilege",
+      "url": "https://docs.openstack.org/keystone/latest/user/application_credentials.html",
+      "checked_on": "2026-10-17",
+      "scope": "Upstream role/access-rule facilities require provider service configuration; Jetstream2 enforcement unknown"
+    },
+    {
+      "id": "bootstrap",
+      "url": "https://docs.cloud-init.io/en/latest/reference/modules.html#keys-to-console",
+      "checked_on": "2026-10-17",
+      "scope": "Upstream host-key console mechanism; selected image support and console access unverified"
+    },
+    {
+      "id": "ssh",
+      "url": "https://man.openbsd.org/sshd.8#AUTHORIZED_KEYS_FILE_FORMAT",
+      "checked_on": "2026-10-17",
+      "scope": "Upstream forced-command and restriction mechanisms; no guest code or configuration added"
+    }
+  ],
+  "preserved_files_sha256": {
+    "docs/manifests/jetstream2-live-test.proposed.json": "3c9b6e4bfbe0daca29131c7f6a8ae995a6a6988d2897c13089e8e0a939f1e6cc",
+    "docs/manifests/jetstream2-operator-decision.json": "0905357c91416ee7530e7c457beb91a57214c11cfd42c4d4467c1752dcb1d2fb",
+    "docs/JETSTREAM2-OPERATOR-DECISION.md": "6c9ca09a487669168ad0550aa4738b0d519aecd7ad994995b375dd59934214dd",
+    "docs/JETSTREAM2-RESCUE-DESIGN-CANDIDATE.md": "ab84b5dbb225937af54452ccc05cc79f35c12f535cbab8b7821213c7e7e0b59e",
+    "docs/evidence/2026-10-17-consumer-review.json": "012f049c5a71ae9f6878df17340c98d93bbd2560c8ec092344ac17e3133f0f0c",
+    "docs/evidence/2026-10-17-local-recovery.json": "dd3738aceb9f586a7cebe82bc7d8da5dd87012c0de3fd2bbd92eb74181f02702",
+    "docs/evidence/2026-10-17-native-docker.json": "13ed9ccd37f1e909adc90ddfdaf1fa44ae807cdf27d8291da70e72da42028b7a",
+    "docs/evidence/2026-10-17-native-recovery.json": "0157ebd51d90c52a848ca6e86cc144023b7018754e412906f27463d4654cf72f",
+    "docs/evidence/2026-10-17-native-su-cleanup.json": "7626650e4421790a7acac9f470a9a1761e17093a0363c89d7cf1feea1c36a695",
+    "docs/evidence/2026-10-17-offline-compatibility.json": "4a1edd7850b8da462a90a1784011b8eb87fd3925aa21211671017a7eac4db360",
+    "docs/evidence/2026-10-17-offline-experiment.json": "239caf9720cd26a224292accb8e0935887b520c28f589c070e53e8dad33e9974",
+    "docs/evidence/2026-10-17-offline-rescue.json": "05158aedbbbbee0e6083ba1cf44dcef2009e6b8a271bc5f8e0047849e985e659",
+    "docs/evidence/2026-10-17-pr8-independent-review.json": "b789a0b666c82ec7524adb39950fe636391b64b98ce2f1c8e2cd134424bdcd4f",
+    "docs/evidence/2026-10-17-synthetic-consumer.json": "394b504351859e6b991f14cc42543916ab4ee7e67a244f7b47d012c5085e86eb"
+  },
+  "actions": {
+    "public_documentation_read": true,
+    "live_provider_auth_or_resource_calls": 0,
+    "provider_credentials_accessed": false,
+    "resources_provisioned": 0,
+    "allocation_consumption": 0,
+    "purchases": 0,
+    "deployments": 0
+  }
+}
