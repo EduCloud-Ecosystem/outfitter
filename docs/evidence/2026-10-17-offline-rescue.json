@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "prepared_on": "2026-10-17",
+  "scope": "OFFLINE_SIMULATED_PROVIDER_ONLY",
+  "live_status": "BLOCKED",
+  "live_authorized": false,
+  "design": {
+    "pr": 10,
+    "head": "3085e8f33350b6ce558a254cfdb7bc3de7f4c1b6",
+    "review": "Independent research_broker review found no blocker to DESIGN-ONLY/BLOCKED record",
+    "ci_run": 39096489315,
+    "ci": "PASS",
+    "merge": "afc4fe82ee368261d7662b380bf9f611b31aa182"
+  },
+  "implementation_source": "d4cc13bf2d04347f15e8e82b6d1df1c5b2e7fc12",
+  "source_files_sha256": {
+    "internal/provider/jetstream2/client.go": "49eff5adebb2a29dd022f8be481c30fd9b8549109da690d5d421bd646ca217c0",
+    "internal/provider/jetstream2/journal.go": "a1513168d4047bdb5c0eada37cba511d5fbb8e07c44283932650d646fbacf384",
+    "internal/provider/jetstream2/rescue_controls_test.go": "1019b18d0cb8f4970167230f6d5a5195cfd6c4833467fcf11604d9495cd2f475",
+    "internal/provider/jetstream2/rescue_observer.go": "3950919ae8cd4e4279538744cf5cf635ebe3969de0f082d848df7ffd35f0f0e3",
+    "internal/provider/jetstream2/rescue_process_test.go": "502bfcbd54723f5c0a0012d3a3a8d6d09a12c8d6258f6233c444727dedec7831",
+    "internal/provider/jetstream2/rescue_protocol.go": "d199c48b66d33b61c199a4203b194037ef13cbcf591994f941df751adb3090ee",
+    "internal/provider/jetstream2/rescue_store.go": "d76e1a6f370d2585cbd4d115a6714d0ac08f999dd6baf2db20b6a910d91d1d6f",
+    "internal/provider/jetstream2/rescue_test.go": "560d685ea46180aa7ce30d7417fca45e90d8c538a7f5cfcc7463cea3822c321f",
+    "internal/provider/jetstream2/supervisor.go": "0fa43206d8848cfd31e29d93ec69abbf538a83a9fb3c0ff25ef0cefe75fefea8",
+    "internal/provider/jetstream2/worker.go": "483a0ae3b145c73cb2d2ba542c5c86779b8b55a918806f85cd0d3355f224d577",
+    "specs/14-offline-independent-rescue.md": "90298b18b517f3dc65805435729b55e2a843a444f44256abd3b3ebd2b1324343"
+  },
+  "independent_review": {
+    "agent": "independent_rescue_review",
+    "initial_head": "d2c852691f6c96d20de1da124b4635d1efc3131f",
+    "initial_result": "CHANGES_REQUESTED",
+    "findings": [
+      {
+        "priority": "P2",
+        "finding": "Signed final receipt escaped failed persistence",
+        "fix": "Return signed bytes only after durable final receipt write succeeds",
+        "regression": "TestOfflineRescueReviewReceiptPersistence"
+      },
+      {
+        "priority": "P2",
+        "finding": "Clock rollback during durable ACK still authorized creation",
+        "fix": "Recheck high-water, captured acceptance time and expiry before ACK return",
+        "regression": "TestOfflineRescueReviewRollbackDuringACK"
+      },
+      {
+        "priority": "P2",
+        "finding": "New observer directory parent entry was not fsynced",
+        "fix": "Sync parent before initialization and propagate errors",
+        "validation": "Independent source review; no physical power-loss simulation"
+      }
+    ],
+    "minor_fixes": [
+      "Reject explicit default and proxy-discovering transports",
+      "Normalize trailing-slash authentication path"
+    ],
+    "final_reviewed_source": "d4cc13bf2d04347f15e8e82b6d1df1c5b2e7fc12",
+    "final_result": "PASS",
+    "independent_failure_probes": "PASS with race detection",
+    "independent_focused_regressions": "PASS with race detection",
+    "worktree_edited_by_reviewer": false
+  },
+  "local_checks": {
+    "full_race_suite": "PASS",
+    "vet": "PASS",
+    "formatting": "PASS",
+    "diff_check": "PASS",
+    "document_links": "PASS",
+    "command": "go test -race -count=1 -json ./...",
+    "passed_tests_and_subtests": 364,
+    "offline_rescue_passes": 208,
+    "passed_packages": [
+      "github.com/EduCloud-Ecosystem/outfitter/cmd/outfitter",
+      "github.com/EduCloud-Ecosystem/outfitter/internal/provider",
+      "github.com/EduCloud-Ecosystem/outfitter/internal/provider/docker",
+      "github.com/EduCloud-Ecosystem/outfitter/internal/consumer",
+      "github.com/EduCloud-Ecosystem/outfitter/internal/ledger",
+      "github.com/EduCloud-Ecosystem/outfitter/internal/broker",
+      "github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2"
+    ],
+    "log_sha256": "cf6297677deb071bd5422a29bce97191ebf76e6a884ca2808dee00f3dcfe73e4"
+  },
+  "process_fault_matrix": {
+    "cases": 40,
+    "source_process_crashes": 16,
+    "observer_process_crashes": 24,
+    "mechanism": "SIGKILL fixture subprocess at named boundary",
+    "state": "Separate private A/B directories on the same machine",
+    "provider": "Explicit loopback HTTPS simulated provider; fixture trust keys",
+    "expected_unknown": "Accepted server scope without visible server retains port and liability"
+  },
+  "retained_failures": [
+    "Initial process-harness expectation of universal cleanup was invalid; tests now require UNKNOWN and retained port after ambiguous server intent, without weakening deletion/accounting controls",
+    "Initial harness reused exec.Cmd for a second sweep; each sweep now starts a new process",
+    "All initial independent-review findings retained above; original Docker/native fault tests unchanged"
+  ],
+  "limits": [
+    "No terminal guarantee for late provider effects",
+    "No actual independent-host qualification",
+    "No provider IAM qualification",
+    "No GET/DELETE atomicity",
+    "No physical power-loss test",
+    "Fixed retained observation capacity of 64 sweeps; exhaustion refuses cleanup and retains scope",
+    "No copied-host takeover or distributed fencing",
+    "No binary attestation",
+    "No receipt ingestion, settlement, live runner or guest handoff"
+  ],
+  "actions": {
+    "live_provider_calls": 0,
+    "provisioned_resources": 0,
+    "allocation_consumption": 0,
+    "spending": 0,
+    "pilot_changes": 0,
+    "assignment_changes": 0,
+    "default_route_changes": 0
+  },
+  "ci_requirement": "Final implementation PR head must pass existing Broker verification, including Docker lifecycle/recovery/consumer checks, before merge"
+}
