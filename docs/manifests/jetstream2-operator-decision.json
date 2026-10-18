@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "status": "BLOCKED",
+  "live_authorized": false,
+  "prepared_on": "2026-10-17",
+  "purpose": "Operator decision artifact only; not an executable permit or config",
+  "accepted_source": "273bb0148fead33c91fcb92e0cc9e0bacdb929c2",
+  "source_manifest": {
+    "path": "docs/manifests/jetstream2-live-test.proposed.json",
+    "sha256": "3c9b6e4bfbe0daca29131c7f6a8ae995a6a6988d2897c13089e8e0a939f1e6cc",
+    "status": "PROPOSED_NOT_AUTHORIZED"
+  },
+  "primary_blocker": "No supported pre-effect transfer of current durable cleanup intent to an independent host; safe treatment of unknown and late effects remains unresolved.",
+  "rescue_design_candidate": {
+    "path": "docs/JETSTREAM2-RESCUE-DESIGN-CANDIDATE.md",
+    "status": "DESIGN_ONLY_NOT_ACCEPTED_FOR_LIVE_QUALIFICATION",
+    "implemented": false,
+    "offline_candidate_tests_run": false,
+    "accounting_authorities": 1,
+    "proposal": "Two immutable phase-specific cleanup manifests acknowledged durably before port/server effects; independent cleanup-only observer returns evidence to the original ledger",
+    "unknown_effect_limit": "A finite observation window and empty inventory cannot establish that an accepted creation request will never produce a late effect",
+    "closes_independent_host_gate": false,
+    "second_host_provisioned": false
+  },
+  "published_candidate": {
+    "flavor": "m3.tiny",
+    "vcpus": 1,
+    "ram_gb": 3,
+    "local_disk_gb": 20,
+    "rate_milli_su_per_hour": 1000,
+    "rate_resource_combination_verified_in_provider_docs": true,
+    "selected_region_api_verified": false,
+    "source": "https://docs.jetstream-cloud.org/general/vmsizes/",
+    "checked_on": "2026-10-17"
+  },
+  "proposed_limits": {
+    "workers": 1,
+    "concurrency": 1,
+    "total_create_attempts": 1,
+    "max_seconds": 600,
+    "native_allowance_milli_su": 1000,
+    "reservation_milli_su": 1000,
+    "nominal_estimate_su": 0.16666666666666666,
+    "code_minimum_reservation_milli_su": 167,
+    "provider_enforced_hard_cap_milli_su": null,
+    "provider_settled_charge_milli_su": null,
+    "dollar_price": null,
+    "additional_cloud_spending_authorized": false,
+    "new_volumes": 0,
+    "new_floating_ips": 0,
+    "new_networks": 0,
+    "new_snapshots": 0
+  },
+  "window": {
+    "timezone": "America/Los_Angeles",
+    "start": "2026-10-20T10:00:00-07:00",
+    "absolute_expiry": "2026-10-20T10:10:00-07:00",
+    "teardown_observation_due": "2026-10-20T10:15:00-07:00",
+    "manual_rescue_escalation": "2026-10-20T10:15:00-07:00",
+    "decision_window_closes": "2026-10-20T11:00:00-07:00",
+    "rule": "Draft slot only. Replace and reapprove if changed or expired; never roll deadlines forward automatically.",
+    "scheduled": false,
+    "approved": false
+  },
+  "unknowns": {
+    "selected_allocation": null,
+    "cpu_entitlement": null,
+    "balance_and_timestamp": null,
+    "allocation_expiry": null,
+    "project_id": null,
+    "region": null,
+    "auth_url": null,
+    "image_uuid": null,
+    "image_checksum": null,
+    "image_boot_compatibility": null,
+    "flavor_uuid": null,
+    "network_id": null,
+    "security_group_id_and_rules": null,
+    "private_route": null,
+    "quota": null,
+    "current_capacity": null,
+    "primary_operator_confirmation": null,
+    "independent_rescue_operator": null,
+    "independent_cleanup_host": null,
+    "current_durable_state_transfer": null,
+    "live_runner_and_recipe_handoff": null,
+    "provider_settlement_evidence": null
+  },
+  "preflight": {
+    "live_status": "NOT_RUN",
+    "reason": "Selected configuration and pins absent; no credential discovery attempted",
+    "supported_command": "outfitter jetstream2-preflight --config PRIVATE_CONFIG.json",
+    "resource_mutations": false,
+    "authentication": "Keystone token POST, followed only by resource GETs",
+    "provisioning_enabled": false,
+    "mock_checks": "PASS",
+    "mock_command": "go test -race -count=1 -run '^(TestPreflightUsesOnlyReadsAfterAuthentication|TestWrongProjectAndRedirectRefused|TestHashAndQuotaFailuresRemainClosed|TestHTTPAndCredentialsInURLRefused)$' ./internal/provider/jetstream2",
+    "live_authentication_performed": false
+  },
+  "human_decisions": [
+    "Defer with Docker or nominate an existing approved CPU allocation",
+    "Confirm operators and existing independent cleanup capacity",
+    "Only after engineering and evidence gates, approve frozen manifest/window and explicitly accept supervised overrun exposure or require a hard cap and defer"
+  ],
+  "no_spend_option": "Continue local Docker; no live test scheduled and no new resources, allocation consumption, subscription or purchase",
+  "offline_gaps": [
+    "Finite one-attempt runner and private synthetic recipe handoff",
+    "Immutable rescue scope and independent observer design, keeping original ledger sole accounting authority",
+    "Selected image compatibility and security-group policy checks",
+    "Bounded pagination only if selected inventory requires it",
+    "Provider-evidence protocol for ambiguous settlement; retain liability meanwhile"
+  ],
+  "assignments": {
+    "issues": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "assignee": "bmarkwart",
+    "state_observed": "OPEN",
+    "unchanged": true,
+    "issue_5_live_and_second_operator_gates": "OPEN"
+  },
+  "source_links": [
+    "https://docs.jetstream-cloud.org/general/vmsizes/",
+    "https://docs.jetstream-cloud.org/general/access/",
+    "https://docs.jetstream-cloud.org/general/quotas/",
+    "https://docs.jetstream-cloud.org/general/resources/",
+    "https://docs.jetstream-cloud.org/alloc/overview/",
+    "https://docs.jetstream-cloud.org/general/featured/",
+    "https://docs.jetstream-cloud.org/ui/cli/auth/",
+    "https://docs.jetstream-cloud.org/general/policies/"
+  ],
+  "actions": {
+    "live_provider_auth_or_resource_api_calls": 0,
+    "provisioned_resources": 0,
+    "allocation_consumption": 0,
+    "purchases": 0,
+    "pilot_mutations": 0
+  }
+}
