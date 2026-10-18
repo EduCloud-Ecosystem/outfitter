@@ -44,6 +44,9 @@ func execute() error {
 		return errors.New("usage: outfitter --state-dir PRIVATE_PATH COMMAND")
 	}
 	command := args[0]
+	if command == "jetstream2-reap" {
+		return jetstreamReap(*state, args[1:])
+	}
 	if command == "jetstream2-preflight" {
 		return jetstreamPreflight(args[1:])
 	}
@@ -211,6 +214,63 @@ func emitPreflight(w io.Writer, result jetstream2.Preflight) error {
 	}
 	if !result.ResourceChecksPassed {
 		return errReportedPreflight
+	}
+	return nil
+}
+
+// Cleanup-only entry point. It cannot configure a permit or create a worker.
+func jetstreamReap(state string, args []string) error {
+	f := flag.NewFlagSet("jetstream2-reap", flag.ContinueOnError)
+	f.SetOutput(io.Discard)
+	path := f.String("config", "", "pinned provider configuration")
+	if e := f.Parse(args); e != nil {
+		return e
+	}
+	if state == "" || *path == "" || len(f.Args()) != 0 {
+		return errors.New("jetstream2-reap requires --state-dir and --config")
+	}
+	file, e := os.Open(*path)
+	if e != nil {
+		return e
+	}
+	defer file.Close()
+	var cfg jetstream2.Config
+	dec := json.NewDecoder(io.LimitReader(file, 65537))
+	dec.DisallowUnknownFields()
+	if e = dec.Decode(&cfg); e != nil {
+		return errors.New("invalid provider configuration")
+	}
+	if dec.Decode(new(any)) != io.EOF {
+		return errors.New("trailing configuration")
+	}
+	store, e := ledger.Open(state, false)
+	if e != nil {
+		return e
+	}
+	journal, e := jetstream2.OpenJournal(store, cfg)
+	if e != nil {
+		return e
+	}
+	client, e := jetstream2.New(cfg, nil, journal)
+	if e != nil {
+		return e
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if e = client.Authenticate(ctx, jetstream2.Credentials{ID: os.Getenv("OS_APPLICATION_CREDENTIAL_ID"), Secret: os.Getenv("OS_APPLICATION_CREDENTIAL_SECRET")}); e != nil {
+		return e
+	}
+	results, e := client.Reap(ctx)
+	if e != nil {
+		return e
+	}
+	if e = json.NewEncoder(os.Stdout).Encode(results); e != nil {
+		return e
+	}
+	for _, r := range results {
+		if r.Error != "" {
+			return errors.New("native cleanup remains unresolved; inspect sweep results")
+		}
 	}
 	return nil
 }

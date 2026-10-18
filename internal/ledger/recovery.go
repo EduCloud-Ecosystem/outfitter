@@ -45,17 +45,19 @@ type Unresolved struct {
 	Deadline  time.Time `json:"deadline"`
 }
 type RecoveryReport struct {
-	SchemaVersion     int          `json:"schema_version"`
-	AuthorityID       string       `json:"authority_id"`
-	StatePath         string       `json:"state_path"`
-	Admission         string       `json:"admission"`
-	AuthoritySHA256   string       `json:"authority_sha256"`
-	CheckpointSHA256  string       `json:"checkpoint_sha256,omitempty"`
-	SourceAuthorityID string       `json:"source_authority_id,omitempty"`
-	SourceStatePath   string       `json:"source_state_path,omitempty"`
-	Fence             *Fence       `json:"fence,omitempty"`
-	Projects          []Usage      `json:"projects"`
-	Unresolved        []Unresolved `json:"unresolved"`
+	NativeAccounts    []NativeUsage  `json:"native_accounts,omitempty"`
+	NativeUnresolved  []NativeRecord `json:"native_unresolved,omitempty"`
+	SchemaVersion     int            `json:"schema_version"`
+	AuthorityID       string         `json:"authority_id"`
+	StatePath         string         `json:"state_path"`
+	Admission         string         `json:"admission"`
+	AuthoritySHA256   string         `json:"authority_sha256"`
+	CheckpointSHA256  string         `json:"checkpoint_sha256,omitempty"`
+	SourceAuthorityID string         `json:"source_authority_id,omitempty"`
+	SourceStatePath   string         `json:"source_state_path,omitempty"`
+	Fence             *Fence         `json:"fence,omitempty"`
+	Projects          []Usage        `json:"projects"`
+	Unresolved        []Unresolved   `json:"unresolved"`
 }
 type fileReference struct {
 	SHA256 string `json:"sha256"`
@@ -125,7 +127,7 @@ func validateAuthority(d Data) error {
 	return nil
 }
 func RequireAdmission(d Data) error {
-	if d.Version != 2 || d.Authority == nil || d.Authority.Admission != "active" {
+	if (d.Version != 2 && d.Version != 3) || d.Authority == nil || d.Authority.Admission != "active" {
 		return ErrAdmission
 	}
 	return nil
@@ -159,12 +161,22 @@ func report(d Data) RecoveryReport {
 			r.Unresolved = append(r.Unresolved, Unresolved{x.RequestID, x.ProjectID, x.Status, x.Compute.Reserved, x.Deadline})
 		}
 	}
+	for id := range d.NativeAccounts {
+		r.NativeAccounts = append(r.NativeAccounts, NativeCalculate(d, id))
+	}
+	sort.Slice(r.NativeAccounts, func(i, j int) bool { return r.NativeAccounts[i].AccountID < r.NativeAccounts[j].AccountID })
+	for _, n := range d.NativeRuns {
+		if n.Settled == nil {
+			r.NativeUnresolved = append(r.NativeUnresolved, n)
+		}
+	}
+	sort.Slice(r.NativeUnresolved, func(i, j int) bool { return r.NativeUnresolved[i].RequestID < r.NativeUnresolved[j].RequestID })
 	return r
 }
 func (s *Store) RecoveryStatus() (RecoveryReport, error) {
 	var out RecoveryReport
 	e := s.View(func(d Data) error {
-		if d.Version != 2 || d.Authority == nil {
+		if (d.Version != 2 && d.Version != 3) || d.Authority == nil {
 			return errors.New("reopen legacy authority to migrate before recovery")
 		}
 		out = report(d)
@@ -574,6 +586,11 @@ func (s *Store) activate(source, dir, digest string, afterFence func() error) (R
 			for _, r := range current.Runs {
 				if r.Active() {
 					return fmt.Errorf("request %s remains unresolved; reconcile source and take a fresh checkpoint", r.RequestID)
+				}
+			}
+			for _, r := range current.NativeRuns {
+				if r.Settled == nil {
+					return fmt.Errorf("native request %s remains unresolved", r.RequestID)
 				}
 			}
 			current.Authority.Admission = "fenced"

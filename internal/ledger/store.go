@@ -28,11 +28,13 @@ type Project struct {
 	Budget int64  `json:"budget_cpu_seconds"`
 }
 type Data struct {
-	Version   int                        `json:"version"`
-	Owner     string                     `json:"owner"`
-	Authority *Authority                 `json:"authority,omitempty"`
-	Projects  map[string]Project         `json:"projects"`
-	Runs      map[string]provider.Record `json:"runs"`
+	NativeAccounts map[string]NativeAccount   `json:"native_accounts,omitempty"`
+	NativeRuns     map[string]NativeRecord    `json:"native_runs,omitempty"`
+	Version        int                        `json:"version"`
+	Owner          string                     `json:"owner"`
+	Authority      *Authority                 `json:"authority,omitempty"`
+	Projects       map[string]Project         `json:"projects"`
+	Runs           map[string]provider.Record `json:"runs"`
 }
 type Store struct{ Dir string }
 type Usage struct {
@@ -150,14 +152,17 @@ func (s *Store) read() (Data, error) {
 	if e = validate(d); e != nil {
 		return d, e
 	}
-	if d.Version == 2 && d.Authority.StatePath != s.Dir {
+	if d.Version >= 2 && d.Authority.StatePath != s.Dir {
 		return d, errors.New("ledger belongs to a different state path; use held restore")
 	}
 	return d, nil
 }
 func validate(d Data) error {
-	if (d.Version != 1 && d.Version != 2) || len(d.Owner) != 32 || d.Projects == nil || d.Runs == nil || len(d.Projects) > MaxProjects || len(d.Runs) > MaxRecords {
+	if (d.Version != 1 && d.Version != 2 && d.Version != 3) || len(d.Owner) != 32 || d.Projects == nil || d.Runs == nil || len(d.Projects)+len(d.NativeAccounts) > MaxProjects || len(d.Runs)+len(d.NativeRuns) > MaxRecords {
 		return errors.New("incomplete or over-capacity ledger")
+	}
+	if e := validateNative(d); e != nil {
+		return e
 	}
 	if e := validateAuthority(d); e != nil {
 		return e
@@ -224,7 +229,7 @@ func (s *Store) write(d Data) error {
 	if e := validate(d); e != nil {
 		return e
 	}
-	if d.Version == 2 && d.Authority.StatePath != s.Dir {
+	if d.Version >= 2 && d.Authority.StatePath != s.Dir {
 		return errors.New("authority path mismatch")
 	}
 	compact := d
@@ -324,7 +329,7 @@ func (s *Store) InitProject(id string, budget int64) (Usage, error) {
 		if e := RequireAdmission(*d); e != nil {
 			return e
 		}
-		if _, ok := d.Projects[id]; !ok && len(d.Projects) >= MaxProjects {
+		if _, ok := d.Projects[id]; !ok && len(d.Projects)+len(d.NativeAccounts) >= MaxProjects {
 			return errors.New("project metadata capacity exhausted")
 		}
 		if p, ok := d.Projects[id]; ok && p.Budget != budget {
