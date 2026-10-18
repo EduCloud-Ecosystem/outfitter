@@ -71,6 +71,21 @@ func openRescueStore(dir string, create bool, p RescuePolicy, c Config, key ed25
 	if e != nil {
 		return nil, e
 	}
+	if create {
+		// Persist the root's directory entry as well as the contents beneath it.
+		parent, err := os.Open(filepath.Dir(dir))
+		if err != nil {
+			return nil, err
+		}
+		err = parent.Sync()
+		closeErr := parent.Close()
+		if err != nil {
+			return nil, err
+		}
+		if closeErr != nil {
+			return nil, closeErr
+		}
+	}
 	root, e := os.OpenRoot(dir)
 	if e != nil {
 		return nil, e
@@ -386,7 +401,7 @@ func (s *rescueStore) accept(ctx context.Context, raw []byte) ([]byte, error) {
 			return e
 		}
 		now := s.now()
-		if !now.Before(scope.Deadline) || scope.CreatedAt.After(now.Add(rescueClockTolerance)) {
+		if now.Before(state.latest) || !now.Before(scope.Deadline) || scope.CreatedAt.After(now.Add(rescueClockTolerance)) {
 			return errors.New("scope expired or clock disagreement")
 		}
 		if state.port != nil && (state.port.ReservationID != scope.ReservationID || state.port.Request != scope.Request) {
@@ -416,8 +431,9 @@ func (s *rescueStore) accept(ctx context.Context, raw []byte) ([]byte, error) {
 		if e = s.writeOnce(scope.Phase+".ack", ack); e != nil {
 			return e
 		}
-		if !s.now().Before(scope.Deadline) {
-			return errors.New("scope expired during durable acceptance")
+		returnedAt := s.now()
+		if returnedAt.Before(now) || returnedAt.Before(state.latest) || !returnedAt.Before(scope.Deadline) {
+			return errors.New("scope expired or clock rolled back during durable acceptance")
 		}
 		return nil
 	})

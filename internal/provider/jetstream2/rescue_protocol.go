@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -230,15 +231,18 @@ func (t rescueTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	return t.next.RoundTrip(r)
 }
 func newRescueClient(c Config, t http.RoundTripper, j Journal, observer bool) (*Client, error) {
-	if t == nil {
+	if t == nil || t == http.DefaultTransport {
 		return nil, errors.New("explicit fixture transport required")
+	}
+	if transport, ok := t.(*http.Transport); ok && transport.Proxy != nil {
+		return nil, errors.New("offline fixture transport cannot discover or use proxies")
 	}
 	origin, e := loopbackOrigin(c.AuthURL)
 	if e != nil {
 		return nil, e
 	}
 	u, _ := url.Parse(c.AuthURL)
-	client, e := newClient(c, rescueTransport{t, origin, observer, u.Path + "/auth/tokens"}, j)
+	client, e := newClient(c, rescueTransport{t, origin, observer, strings.TrimRight(u.Path, "/") + "/auth/tokens"}, j)
 	if e == nil {
 		client.offlineRescue = true
 	}

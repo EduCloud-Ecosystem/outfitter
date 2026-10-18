@@ -189,3 +189,73 @@ func TestOfflineRescueParentAndUntrustedProtocol(t *testing.T) {
 		}
 	}
 }
+
+func TestOfflineRescueReviewReceiptPersistence(t *testing.T) {
+	for _, point := range []string{"before-write:", "before-file-sync:", "before-dir-sync:"} {
+		t.Run(point, func(t *testing.T) {
+			r := setupRescue(t)
+			record := r.create(t)
+			r.future(record)
+			r.b.store.fault = func(at string) error {
+				if at == point+"obs-001.receipt" {
+					return errors.New("injected final receipt persistence failure")
+				}
+				return nil
+			}
+			raw, e := r.b.Sweep(context.Background())
+			if e == nil || len(raw) != 0 {
+				t.Fatal("non-durable signed receipt escaped", len(raw), e)
+			}
+			r.b.store.fault = nil
+			if _, e = r.b.Sweep(context.Background()); e != nil {
+				t.Fatal("retained intent failed later sweep", e)
+			}
+			assertHeld(t, r.j, 100)
+		})
+	}
+}
+
+func TestOfflineRescueReviewRollbackDuringACK(t *testing.T) {
+	for _, phase := range []string{"port", "server"} {
+		t.Run(phase, func(t *testing.T) {
+			r := setupRescue(t)
+			r.b.store.fault = func(at string) error {
+				if at == "after-dir-sync:"+phase+".ack" {
+					r.b.store.now = func() time.Time { return time.Now().UTC().Add(-time.Hour) }
+				}
+				return nil
+			}
+			if _, e := r.c.CreateWorker(context.Background(), r.w); e == nil {
+				t.Fatal("rollback during ACK accepted")
+			}
+			posts, _ := r.counts()
+			want := 0
+			if phase == "server" {
+				want = 1
+			}
+			if posts != want {
+				t.Fatal("POST after observer rollback", posts, want)
+			}
+			assertHeld(t, r.j, 100)
+		})
+	}
+}
+
+func TestOfflineRescueReviewTransportRestrictions(t *testing.T) {
+	r := setupRescue(t)
+	if _, e := newRescueClient(r.c.config, http.DefaultTransport, nil, true); e == nil {
+		t.Fatal("explicit default transport accepted")
+	}
+	if _, e := newRescueClient(r.c.config, http.DefaultTransport.(*http.Transport).Clone(), nil, true); e == nil {
+		t.Fatal("environment proxy transport accepted")
+	}
+	cfg := r.c.config
+	cfg.AuthURL += "/"
+	c, e := newRescueClient(cfg, r.transport, nil, true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = c.Authenticate(context.Background(), Credentials{"fixture", "fixture"}); e != nil {
+		t.Fatal("trailing slash authentication", e)
+	}
+}

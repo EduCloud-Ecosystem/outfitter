@@ -278,13 +278,14 @@ func (b *OfflineRescueObserver) Sweep(ctx context.Context) ([]byte, error) {
 			return errors.New("observer clock rollback during sweep")
 		}
 		r.At = now
-		signed, e = rescueSign("receipt", r, b.store.key)
+		candidate, e := rescueSign("receipt", r, b.store.key)
 		if e != nil {
 			return e
 		}
-		if e = b.store.writeOnce(fmt.Sprintf("obs-%03d.receipt", r.Sequence), signed); e != nil {
+		if e = b.store.writeOnce(fmt.Sprintf("obs-%03d.receipt", r.Sequence), candidate); e != nil {
 			return e
 		}
+		signed = candidate
 		return cleanupErr
 	})
 	return signed, e
