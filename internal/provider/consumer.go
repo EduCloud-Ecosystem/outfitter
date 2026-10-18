@@ -67,7 +67,7 @@ func (r Request) validateConsumer() error {
 	for _, files := range [][]ContentFile{b.InputFiles, b.RecipeFiles} {
 		previous := ""
 		for _, f := range files {
-			if f.Path <= previous || len(f.Path) > 256 || !utf8.ValidString(f.Path) || f.Path == "." || path.IsAbs(f.Path) || path.Clean(f.Path) != f.Path || strings.HasPrefix(f.Path, "../") || strings.ContainsAny(f.Path, "\\\x00\r\n") || f.Size < 0 || f.Size > 16<<20 || !contentHex(f.SHA256, 32) {
+			if f.Path <= previous || len(f.Path) > 256 || !utf8.ValidString(f.Path) || f.Path == "." || f.Path == ".." || path.IsAbs(f.Path) || path.Clean(f.Path) != f.Path || strings.HasPrefix(f.Path, "../") || strings.ContainsAny(f.Path, "\\\x00\r\n") || f.Size < 0 || f.Size > 16<<20 || !contentHex(f.SHA256, 32) {
 				return errors.New("invalid, unsorted or duplicate content manifest entry")
 			}
 			total += f.Size

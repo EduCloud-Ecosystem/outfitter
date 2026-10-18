@@ -26,7 +26,8 @@ excluded from the binding. File names and hashes are metadata; only synthetic,
 reviewed content is allowed, not student identities, records or submissions.
 
 Each manifest is explicit (empty array allowed), sorted and unique; at most 128
-files combined, 256 bytes per relative path and 16 MiB combined content. No links
+files combined, 256 bytes per relative path and 16 MiB combined content. Bare
+`.`/`..`, absolute and parent-traversal paths fail preflight before admission. No links
 or special files. Existing 32 KiB request and 96 KiB record limits also apply.
 The supported consumer profile caps CPU at 1, RAM at 256 MiB, PIDs at 64, time at
 30 seconds and output at 64 KiB. The one immutable image and command execute once,

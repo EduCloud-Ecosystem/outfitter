@@ -145,5 +145,7 @@
     ],
     "log_sha256": "677c1d65558b7206c53702244ac81a96b3740fb1fa4adce3018e9c482f58a6bb"
   },
-  "review_and_final_ci": "Independent exact-head review and full repository/Docker CI recorded on the PR before merge; this file records bounded local checks only."
+  "review_and_final_ci": "Independent exact-head review and full repository/Docker CI recorded on the PR before merge; this file records bounded local checks only.",
+  "source_revision": "7fdbe5fe18799d3d59541ae6b47a7bfb9241dee9",
+  "later_review_fix": "Bare parent manifest paths are rejected by the subsequent review-fix commit; see 2026-10-17-consumer-review.json. Final-head Docker CI is recorded on PR #9."
 }

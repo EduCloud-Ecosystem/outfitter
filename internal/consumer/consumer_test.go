@@ -376,3 +376,37 @@ func TestVersionFourNativeCoexistenceAndBindingIntegrity(t *testing.T) {
 		t.Fatal(again, e)
 	}
 }
+
+func TestBareParentManifestRefusedBeforeAdmission(t *testing.T) {
+	for _, manifest := range []string{"input", "recipe"} {
+		t.Run(manifest, func(t *testing.T) {
+			b, r, m := setup(t, 60)
+			if manifest == "input" {
+				r.InputFiles[0].Path = ".."
+			} else {
+				r.RecipeFiles[0].Path = ".."
+			}
+			before, e := os.ReadFile(filepath.Join(b.Store.Dir, "ledger.json"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			if _, e = Check(r); e == nil {
+				t.Error("bare parent manifest passed pure preflight")
+			}
+			if out, e := Run(context.Background(), b, r); e == nil {
+				t.Error("invalid manifest consumed attempt", out.Status, out.Compute)
+			}
+			after, e := os.ReadFile(filepath.Join(b.Store.Dir, "ledger.json"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			if string(before) != string(after) || m.creates != 0 {
+				t.Error("invalid manifest changed authority or created a resource")
+			}
+			usage, e := b.Store.Usage("project")
+			if e != nil || usage.Charged != 0 || usage.Reserved != 0 || usage.Remaining != 60 {
+				t.Error("invalid manifest consumed allowance", usage, e)
+			}
+		})
+	}
+}
