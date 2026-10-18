@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"time"
@@ -96,6 +97,12 @@ func validateNative(d Data) error {
 		if x := a.Experiment; x != nil {
 			if len(x.Envelope) == 0 || len(x.Envelope) > 8192 || !json.Valid(x.Envelope) || !validHex(x.SHA256, 32) || hash(x.Envelope) != x.SHA256 || !provider.ValidID(x.RequestID) || !validHex(x.ReservationID, 16) {
 				return errors.New("invalid native experiment")
+			}
+			// RawMessage is compacted and HTML-escaped by the enclosing JSON
+			// encoder. Reject unstable bytes before writing a now-invalid digest.
+			encoded, err := json.Marshal(x.Envelope)
+			if err != nil || !bytes.Equal(encoded, x.Envelope) {
+				return errors.New("noncanonical native experiment envelope")
 			}
 			r, exists := d.NativeRuns[x.RequestID]
 			if x.Consumed != exists || (exists && (r.AccountID != id || r.ReservationID != x.ReservationID || r.ExperimentDigest != x.SHA256)) {

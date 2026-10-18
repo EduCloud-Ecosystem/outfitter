@@ -172,3 +172,50 @@ func TestNativeExperimentSettlementRecoveryPreservesAttempt(t *testing.T) {
 		t.Fatal("activated target reset attempt")
 	}
 }
+
+func TestNativeExperimentReviewStableEnvelopeBytes(t *testing.T) {
+	for name, raw := range map[string]string{"whitespace": `{ "fixture": true }`, "less_than": `{"fixture":"<"}`, "greater_than": `{"fixture":">"}`, "ampersand": `{"fixture":"&"}`} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			os.Chmod(dir, 0700)
+			s, e := Open(dir, true)
+			if e != nil {
+				t.Fatal(e)
+			}
+			before, e := os.ReadFile(filepath.Join(dir, "ledger.json"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			x := &NativeExperiment{Envelope: json.RawMessage(raw), SHA256: hash([]byte(raw)), RequestID: "one", ReservationID: strings.Repeat("a", 32)}
+			e = s.InitNativeAccount(NativeAccount{ID: "account", Provider: "fixture", Unit: "milli_su", Scope: "project", Budget: 100, Policy: json.RawMessage(`{}`), Experiment: x})
+			if e == nil {
+				readErr := s.View(func(Data) error { return nil })
+				t.Fatalf("unstable envelope accepted; read result: %v", readErr)
+			}
+			after, e := os.ReadFile(filepath.Join(dir, "ledger.json"))
+			if e != nil || !bytes.Equal(before, after) {
+				t.Fatal("rejected configuration wrote ledger", e)
+			}
+			if _, e = Open(dir, false); e != nil {
+				t.Fatal("rejected configuration damaged authority", e)
+			}
+		})
+	}
+	for name, raw := range map[string]string{"compact": `{"fixture":true}`, "escaped": `{"fixture":"\u003c\u003e\u0026"}`} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			os.Chmod(dir, 0700)
+			s, e := Open(dir, true)
+			if e != nil {
+				t.Fatal(e)
+			}
+			x := &NativeExperiment{Envelope: json.RawMessage(raw), SHA256: hash([]byte(raw)), RequestID: "one", ReservationID: strings.Repeat("a", 32)}
+			if e = s.InitNativeAccount(NativeAccount{ID: "account", Provider: "fixture", Unit: "milli_su", Scope: "project", Budget: 100, Policy: json.RawMessage(`{}`), Experiment: x}); e != nil {
+				t.Fatal(e)
+			}
+			if _, e = Open(dir, false); e != nil {
+				t.Fatal("stable envelope not readable", e)
+			}
+		})
+	}
+}

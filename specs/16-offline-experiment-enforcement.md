@@ -20,6 +20,9 @@ policy and therefore introduces no circular digest.
 Embed only a bounded synthetic profile (2 KiB) and snapshot (4 KiB), each at most
 eight rules. The complete envelope is at most 8 KiB. Use existing strict JSON,
 normalization and missing/null semantics; retain canonical bytes and SHA-256.
+The generic ledger rejects opaque envelope bytes that would change under outer
+JSON serialization (including insignificant whitespace and unescaped HTML text),
+before any write can invalidate the retained digest.
 Existing native policy and native worker state limits remain 16 KiB each. The
 worker state carries only the experiment digest and closed live/guest labels,
 not a second copy of compatibility evidence. Overflow fails closed before any
