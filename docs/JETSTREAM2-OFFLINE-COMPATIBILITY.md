@@ -24,8 +24,9 @@ Timestamps and completeness flags are unauthenticated fixture assertions.
 
 Missing observations yield `UNKNOWN`; present nulls retain their field-specific
 meaning. In particular, null security-rule protocol or port bounds may express
-unrestricted access. Only explicit reviewed broad-rule flags can permit a matching
-profile for those cases. Dynamic selectors and unsupported metadata remain unknown.
+unrestricted access. Unrestricted CIDRs and broad egress require the corresponding
+explicit profile flags; nulls never mean an empty or harmless rule. Dynamic
+selectors and unsupported metadata remain unknown.
 Complete empty rules differ from absent, null or incomplete rule evidence.
 
 The [primary-source mapping](proposals/jetstream2-openstack-field-mapping.md) and
