@@ -21,14 +21,15 @@ import (
 // Policy is an operator-reviewed finite experiment permit, not proof of an
 // independent host, available allocation or provider-enforced spending cap.
 type Policy struct {
-	Config                   Config    `json:"config"`
-	BudgetMilliSU            int64     `json:"budget_milli_su"`
-	RateMilliSUPerHour       int64     `json:"rate_milli_su_per_hour"`
-	RateCheckedAt            string    `json:"rate_checked_at"`
-	RateSource               string    `json:"rate_source"`
-	SupervisorID             string    `json:"supervisor_id"`
-	ApprovalExpiresAt        time.Time `json:"approval_expires_at"`
-	AllowSupervisedException bool      `json:"allow_supervised_exception"`
+	Config                   Config        `json:"config"`
+	BudgetMilliSU            int64         `json:"budget_milli_su"`
+	RateMilliSUPerHour       int64         `json:"rate_milli_su_per_hour"`
+	RateCheckedAt            string        `json:"rate_checked_at"`
+	RateSource               string        `json:"rate_source"`
+	SupervisorID             string        `json:"supervisor_id"`
+	ApprovalExpiresAt        time.Time     `json:"approval_expires_at"`
+	AllowSupervisedException bool          `json:"allow_supervised_exception"`
+	Rescue                   *RescuePolicy `json:"rescue,omitempty"`
 }
 type DurableJournal struct {
 	Store     *ledger.Store
@@ -49,6 +50,11 @@ func (p Policy) validate() error {
 	if e := p.Config.Validate(); e != nil {
 		return e
 	}
+	if p.Rescue != nil {
+		if e := p.Rescue.validate(p.Config); e != nil {
+			return e
+		}
+	}
 	if p.BudgetMilliSU < 1 || p.BudgetMilliSU > 1000000000 || p.RateMilliSUPerHour < 1 || p.RateMilliSUPerHour > 1000000000 || !provider.ValidID(p.SupervisorID) || !p.AllowSupervisedException || p.ApprovalExpiresAt.IsZero() {
 		return errors.New("finite native budget, rate and supervised-experiment permit required")
 	}
@@ -60,6 +66,16 @@ func (p Policy) validate() error {
 func ConfigureJournal(s *ledger.Store, p Policy) (*DurableJournal, error) {
 	if e := p.validate(); e != nil {
 		return nil, e
+	}
+	if p.Rescue != nil {
+		if e := s.View(func(d ledger.Data) error {
+			if d.Authority == nil || d.Authority.ID != p.Rescue.AuthorityID {
+				return errors.New("rescue source authority mismatch")
+			}
+			return nil
+		}); e != nil {
+			return nil, e
+		}
 	}
 	b, _ := json.Marshal(p)
 	if e := s.InitNativeAccount(ledger.NativeAccount{ID: accountID(p.Config), Provider: "jetstream2", Unit: "milli_su", Scope: p.Config.ProjectID, Budget: p.BudgetMilliSU, Policy: b}); e != nil {
@@ -126,6 +142,9 @@ func (j *DurableJournal) decode(n ledger.NativeRecord) (WorkerRecord, error) {
 		return r, errors.New("adapter cannot settle native charges")
 	}
 	// Settlement belongs to the envelope; it never rewrites provider evidence.
+	if e := validateRescueRecord(j.policy.Rescue, j.config, r); e != nil {
+		return r, e
+	}
 	if n.Settled != nil {
 		r.AccountingStatus = "provider_settled"
 		r.UnresolvedLiability = false
@@ -143,6 +162,9 @@ func (j *DurableJournal) Admit(ctx context.Context, w WorkerRequest) (WorkerReco
 	e := j.Store.Update(func(d *ledger.Data) error {
 		if e := ledger.RequireAdmission(*d); e != nil {
 			return e
+		}
+		if j.policy.Rescue != nil && (d.Authority == nil || d.Authority.ID != j.policy.Rescue.AuthorityID) {
+			return errors.New("rescue authority cannot take over")
 		}
 		if !provider.ValidID(w.RequestID) || w.Owner != d.Owner || w.MaxSeconds < 1 || w.MaxSeconds > 3600 || w.CeilingMilliSU < 1 || w.CeilingMilliSU > 1000000000 {
 			return errors.New("invalid native request or owner")
@@ -188,6 +210,10 @@ func (j *DurableJournal) Admit(ctx context.Context, w WorkerRequest) (WorkerReco
 		h := sha256.Sum256([]byte(w.Owner + ":" + w.RequestID))
 		r = WorkerRecord{Request: w, ProjectID: j.config.ProjectID, Region: j.config.Region, ImageID: j.config.ImageID, FlavorID: j.config.FlavorID, ConfigHash: digest(j.config), ReservationID: hex.EncodeToString(token[:]), ReservedMilliSU: w.CeilingMilliSU, CreatedAt: now, Deadline: deadline, SupervisorApproved: true, Name: "outfitter-" + hex.EncodeToString(h[:16]), Status: "reserved", AccountingStatus: "reserved_unsettled", UnresolvedLiability: true}
 		b, _ := json.Marshal(r)
+		if j.policy.Rescue != nil {
+			r.Rescue = &RescueRecord{Policy: *j.policy.Rescue}
+			b, _ = json.Marshal(r)
+		}
 		if d.NativeRuns == nil {
 			d.NativeRuns = map[string]ledger.NativeRecord{}
 		}
@@ -233,6 +259,16 @@ func (j *DurableJournal) Save(ctx context.Context, r WorkerRecord) error {
 			return errors.New("native effects cannot be forgotten or replaced")
 		}
 		n.CleanupVerified = r.CleanupVerified
+		if old.Rescue != nil {
+			if r.Rescue == nil {
+				return errors.New("cleanup executor cannot change")
+			}
+			for _, pair := range [][2]string{{old.Rescue.PortScope, r.Rescue.PortScope}, {old.Rescue.PortACK, r.Rescue.PortACK}, {old.Rescue.ServerScope, r.Rescue.ServerScope}, {old.Rescue.ServerACK, r.Rescue.ServerACK}} {
+				if pair[0] != "" && pair[0] != pair[1] {
+					return errors.New("rescue evidence cannot be replaced")
+				}
+			}
+		}
 		n.Ambiguous = r.CreateAmbiguous
 		n.Revision++
 		n.State, e = json.Marshal(r)

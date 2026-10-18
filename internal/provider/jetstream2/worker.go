@@ -24,6 +24,7 @@ type WorkerRequest struct {
 	CeilingMilliSU int64  `json:"ceiling_milli_su"`
 }
 type WorkerRecord struct {
+	Rescue              *RescueRecord `json:"rescue,omitempty"`
 	ConfigHash          string        `json:"config_hash,omitempty"`
 	CreatedAt           time.Time     `json:"created_at"`
 	PortAttempted       bool          `json:"port_attempted"`
@@ -76,6 +77,9 @@ func (c *Client) CreateWorker(ctx context.Context, r WorkerRequest) (WorkerRecor
 	if !fresh {
 		return record, nil
 	}
+	if record.Rescue != nil && (!c.offlineRescue || c.rescueSender == nil) {
+		return record, errors.New("B-owned creation requires offline rescue ACKs")
+	}
 	if record.Request != r || record.ReservationID == "" || record.ReservedMilliSU < r.CeilingMilliSU || !record.SupervisorApproved || !record.Deadline.After(time.Now()) || record.Deadline.After(time.Now().Add(time.Duration(r.MaxSeconds+1)*time.Second)) || record.ProjectID != c.config.ProjectID || record.Region != c.config.Region || record.ImageID != c.config.ImageID || record.FlavorID != c.config.FlavorID || (record.ConfigHash != "" && record.ConfigHash != digest(c.config)) {
 		return record, errors.New("missing, mismatched or expired durable reservation/supervisor permit")
 	}
@@ -117,13 +121,28 @@ func (c *Client) CreateWorker(ctx context.Context, r WorkerRequest) (WorkerRecor
 		return unknown(e)
 	}
 	record.PortAttempted = true
+	if e = c.rescuePoint("port-intent-before"); e != nil {
+		return unknown(e)
+	}
 	if e = c.journal.Save(ctx, record); e != nil {
 		return record, e
+	}
+	if e = c.rescuePoint("port-intent-after"); e != nil {
+		return unknown(e)
+	}
+	if e = c.rescuePhase(mutationCtx, &record, "port"); e != nil {
+		return unknown(e)
 	}
 	if e = checkDeadline(); e != nil {
 		return unknown(e)
 	}
+	if e = c.rescuePoint("port-post-before"); e != nil {
+		return unknown(e)
+	}
 	_, e = c.call(mutationCtx, "POST", endpoint, map[string]any{"port": map[string]any{"name": record.Name, "network_id": c.config.NetworkID, "project_id": c.config.ProjectID, "security_groups": []string{c.config.SecurityGroupID}, "admin_state_up": true, "description": description}}, &port)
+	if pointErr := c.rescuePoint("port-post-after"); pointErr != nil {
+		return unknown(pointErr)
+	}
 	if e != nil {
 		return unknown(errors.New("port creation response unknown; do not retry creation"))
 	}
@@ -143,13 +162,34 @@ func (c *Client) CreateWorker(ctx context.Context, r WorkerRequest) (WorkerRecor
 		return unknown(e)
 	}
 	record.ServerAttempted = true
+	if e = c.rescuePoint("server-intent-before"); e != nil {
+		return unknown(e)
+	}
 	if e = c.journal.Save(ctx, record); e != nil {
+		return unknown(e)
+	}
+	if e = c.rescuePoint("server-intent-after"); e != nil {
+		return unknown(e)
+	}
+	if e = c.rescuePhase(mutationCtx, &record, "server"); e != nil {
 		return unknown(e)
 	}
 	if e = checkDeadline(); e != nil {
 		return unknown(e)
 	}
+	if e = c.rescuePoint("port-post-before"); e != nil {
+		return unknown(e)
+	}
+	if e = c.rescuePoint("server-post-before"); e != nil {
+		return unknown(e)
+	}
 	_, e = c.call(mutationCtx, "POST", endpoint, map[string]any{"server": map[string]any{"name": record.Name, "imageRef": c.config.ImageID, "flavorRef": c.config.FlavorID, "networks": []map[string]string{{"port": record.PortID}}, "metadata": map[string]string{"outfitter_owner": r.Owner, "outfitter_request": r.RequestID, "outfitter_deadline": record.Deadline.UTC().Format(time.RFC3339), "outfitter_reservation": record.ReservationID}}}, &server)
+	if pointErr := c.rescuePoint("server-post-after"); pointErr != nil {
+		return unknown(pointErr)
+	}
+	if pointErr := c.rescuePoint("port-post-after"); pointErr != nil {
+		return unknown(pointErr)
+	}
 	if e != nil {
 		return unknown(errors.New("server creation response unknown; do not retry creation"))
 	}
@@ -220,6 +260,9 @@ func (c *Client) teardownWorker(ctx context.Context, r WorkerRecord) (WorkerReco
 		return r, errors.New("resource IDs do not match durable journal")
 	}
 	r = stored
+	if r.Rescue != nil {
+		return r, errors.New("cleanup belongs exclusively to the pinned offline observer")
+	}
 	if r.AccountingStatus == "provider_settled" {
 		return r, nil
 	}

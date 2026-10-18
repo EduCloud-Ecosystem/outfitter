@@ -27,11 +27,14 @@ type Config struct {
 }
 type Credentials struct{ ID, Secret string }
 type Client struct {
-	config    Config
-	http      *http.Client
-	token     string
-	endpoints map[string]string
-	journal   Journal
+	config        Config
+	http          *http.Client
+	token         string
+	endpoints     map[string]string
+	journal       Journal
+	offlineRescue bool
+	rescueSender  *RescueSender
+	rescueFault   func(string) error
 }
 
 var ref = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,100}$`)
@@ -59,6 +62,12 @@ func httpsURL(raw string) error {
 	return nil
 }
 func New(config Config, transport http.RoundTripper, journal Journal) (*Client, error) {
+	if j, ok := journal.(*DurableJournal); ok && j.policy.Rescue != nil {
+		return nil, errors.New("offline rescue requires its fixture-only constructor")
+	}
+	return newClient(config, transport, journal)
+}
+func newClient(config Config, transport http.RoundTripper, journal Journal) (*Client, error) {
 	if e := config.Validate(); e != nil {
 		return nil, e
 	}

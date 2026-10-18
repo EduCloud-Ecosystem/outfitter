@@ -53,6 +53,9 @@ func (c *Client) ReconcileExpired(ctx context.Context, id string) (WorkerRecord,
 	if e != nil {
 		return r, e
 	}
+	if r.Rescue != nil {
+		return r, errors.New("A reaper cannot delete observer-owned resources")
+	}
 	if r.AccountingStatus == "provider_settled" {
 		return r, nil
 	}
