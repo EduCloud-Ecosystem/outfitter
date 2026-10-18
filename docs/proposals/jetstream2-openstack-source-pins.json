@@ -1,0 +1,72 @@
+{
+  "checked_on": "2026-10-17",
+  "timezone": "America/Los_Angeles",
+  "purpose": "Primary schema research only; not deployed Jetstream2 version evidence",
+  "proposal_base": "19efdcad86678d7199995e30e1f4133360fddf65",
+  "documentation": [
+    "https://docs.openstack.org/api-ref/image/v2/#show-image",
+    "https://docs.openstack.org/glance/latest/admin/useful-image-properties.html#image-property-keys-and-values",
+    "https://docs.openstack.org/api-ref/compute/#show-flavor-details",
+    "https://docs.openstack.org/api-ref/network/v2/#show-security-group",
+    "https://docs.openstack.org/api-ref/network/v2/#show-security-group-rule"
+  ],
+  "upstream_source_pins": [
+    {
+      "repository": "glance",
+      "commit": "76306ffdb15a76456bc6106a659250e1ae69f4e1",
+      "files": [
+        {
+          "path": "glance/api/v2/images.py",
+          "source": "https://github.com/openstack/glance/blob/76306ffdb15a76456bc6106a659250e1ae69f4e1/glance/api/v2/images.py",
+          "sha256": "685a1a176203d3fcd92580106a2ffeee1911234c0f99db2ad04f8d253499e2cc"
+        }
+      ]
+    },
+    {
+      "repository": "nova",
+      "commit": "0ec0756a55f374ec585ea80485ff094718f53c78",
+      "files": [
+        {
+          "path": "nova/compute/api.py",
+          "source": "https://github.com/openstack/nova/blob/0ec0756a55f374ec585ea80485ff094718f53c78/nova/compute/api.py",
+          "sha256": "6da767034bca94470bda343e53bf49cec4630ac3859eb6dd044ac54079a94aa4"
+        }
+      ]
+    },
+    {
+      "repository": "neutron",
+      "commit": "8e0b546521abde0d96e68169a60c043a5053e684",
+      "files": [
+        {
+          "path": "neutron/extensions/securitygroup.py",
+          "source": "https://github.com/openstack/neutron/blob/8e0b546521abde0d96e68169a60c043a5053e684/neutron/extensions/securitygroup.py",
+          "sha256": "35206ed2a79af2e15d5788b1579a7fd6b482761c73d7b4a869be23936af051b5"
+        },
+        {
+          "path": "neutron/db/securitygroups_db.py",
+          "source": "https://github.com/openstack/neutron/blob/8e0b546521abde0d96e68169a60c043a5053e684/neutron/db/securitygroups_db.py",
+          "sha256": "d9c198b32cc5be5186b341811e69c45346ff74ddc07ad2e4ab19ecbfaac58fc2"
+        }
+      ]
+    },
+    {
+      "repository": "neutron-lib",
+      "commit": "6893d1d8c22bac71813422563beb9374e3b902e0",
+      "files": [
+        {
+          "path": "neutron_lib/api/definitions/security_groups_remote_address_group.py",
+          "source": "https://github.com/openstack/neutron-lib/blob/6893d1d8c22bac71813422563beb9374e3b902e0/neutron_lib/api/definitions/security_groups_remote_address_group.py",
+          "sha256": "6e3f0a43e94bf75aa1bd7c8a9015d80357332948235a69fad00cf3fa1eb92ba1"
+        },
+        {
+          "path": "neutron_lib/api/converters.py",
+          "source": "https://github.com/openstack/neutron-lib/blob/6893d1d8c22bac71813422563beb9374e3b902e0/neutron_lib/api/converters.py",
+          "sha256": "5519dd2cdf5f389e47bdf685cc2cfd30629c1b3dbfb9da764e77ca449dbd77f2"
+        }
+      ]
+    }
+  ],
+  "provider_api_calls": 0,
+  "provider_credentials_accessed": false,
+  "implementation_changed": false
+}
