@@ -31,7 +31,15 @@ or failed POST is never retried; later discovery uses the exact durable reservat
 token, owner, request, project and pinned resource attributes. Tags alone do not
 authorize deletion. Multiple candidates or incomplete/paginated inventories refuse
 cleanup and remain visible. Every recorded resource is freshly ownership-checked
-before DELETE. Delete responses require a separate absence observation.
+before DELETE. Both discovery and the fresh server check require an explicit,
+non-null empty attachment array; omitted/null attachment inventory is unknown and
+refuses deletion. Delete responses require a separate absence observation.
+
+Expiry after a successful, durably recorded port creation does not make that known
+effect ambiguous when no server POST was attempted. Preserve prior ambiguity and
+mark attempted effects with missing IDs as ambiguous. Known effects still retain
+their reservation until verified cleanup and explicit provider settlement; a local
+timeout alone never supplies a charge or refund.
 
 The independently invoked supervisor lists durable requests, checks absolute
 expiry, reconciles exact ownership and performs teardown without requester or guest

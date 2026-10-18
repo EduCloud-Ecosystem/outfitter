@@ -45,7 +45,9 @@ from this document alone: the independent host and state-access plan remain gate
 The supervisor recovers missing IDs using the exact persisted random reservation
 token, owner, request, deterministic name, project and image/flavor/network pins.
 It refuses duplicate matches, foreign ownership, unknown attached storage and
-incomplete inventory. It checks recorded resources again before deletion and
+incomplete inventory. Both discovery and the fresh server check require an explicit
+non-null empty volume-attachment list; missing attachment evidence refuses cleanup.
+It checks recorded resources again before deletion and
 confirms absence separately. Discovery scans one bounded project inventory and
 refuses pagination; large allocations may require a reviewed paginated inventory
 implementation before qualification. Repeated cleanup cannot retry a create.
@@ -64,7 +66,10 @@ implementation before qualification. Repeated cleanup cannot retry a create.
 Observations append by immutable event ID and are cumulative, not additive charges.
 At most 64 observations are retained per request; exhausting that optional history
 refuses a new observation without blocking cleanup. Unknown or ambiguous work keeps
-its full reservation after deletion. Ambiguous requests cannot currently be settled
+its full reservation after deletion. Expiry after a known, durably recorded port
+creation, before a server attempt, preserves the reservation until verified cleanup
+and explicit settlement but does not make that known effect ambiguous. Ambiguous
+requests cannot currently be settled
 automatically, even after later discovery; resolution needs a future reviewed
 provider-evidence protocol. Reported overruns are retained and stop new native
 admission. Settlement is a trusted operator/library operation; the software cannot
@@ -155,3 +160,11 @@ checkpoint/restore passed 38. The final native-package race suite passed 44 test
 including subtests. The source/fault-model review was performed by the implementing
 agent; it is not an independent review. CI retains its JSON test log alongside the
 Docker/recovery artifacts for the exact submitted revision.
+
+Independent review of the original PR head found and reproduced two boundary bugs:
+known-port deadline expiry wrongly made settlement impossible, and omitted/null
+volume-attachment lists were accepted as empty. Both have dedicated regressions,
+including separate discovery and fresh-observation cases. See the
+[review remediation record](evidence/2026-10-17-pr8-independent-review.json).
+The manifest remains `PROPOSED_NOT_AUTHORIZED`; merging these fixes does not
+approve live Jetstream2 testing or provisioning.

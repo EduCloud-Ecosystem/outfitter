@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-17",
+  "pr": "https://github.com/EduCloud-Ecosystem/outfitter/pull/8",
+  "initial_review_head": "431fed7214fa15f0bc0f0e88a5e2202de84cf321",
+  "independent_reviewer": "collaboration agent /root/independent_pr8_review, fresh context",
+  "initial_outcome": "changes required",
+  "findings": [
+    {
+      "id": "R1",
+      "priority": "P2",
+      "problem": "Deadline after successful durable port recording incorrectly made the known effect ambiguous, permanently blocking explicit settlement and later native admission.",
+      "fix": "Preserve existing ambiguity or an attempted effect whose resource ID remains missing; known recorded effects still retain liability until cleanup and explicit settlement.",
+      "regression": "TestKnownPortDeadlineRetainsLiabilityUntilExplicitSettlement"
+    },
+    {
+      "id": "R2",
+      "priority": "P2",
+      "problem": "Discovery and fresh server checks accepted omitted/null volume-attachment inventory as empty, allowing deletion without complete storage evidence.",
+      "fix": "Require an explicit non-null empty attachment array in both checks; retain liability and refuse deletion otherwise.",
+      "regression": "TestCleanupRefusesMissingOrNullAttachmentInventory: discovery/fresh/both, each omitted/null"
+    }
+  ],
+  "before_fix": {
+    "result": "expected FAIL for both findings",
+    "log_sha256": "fe62345deadf3650b316d4e4eece883d0448aab436a472ff7f15bf3a91a29652",
+    "reproduced_cases": 7
+  },
+  "verification": {
+    "scope": "native-package race tests plus full go vet, formatting and diff checks; final-head independent re-review and CI recorded on PR before merge",
+    "native_race_tests": {
+      "result": "PASS",
+      "test_and_subtest_passes": 52,
+      "failed_tests": 0,
+      "log_sha256": "7de8427eb695b4b074ca25dbcb28c10e58e82f85dcf6a1518c14c82fbe5fe9d9"
+    },
+    "go_vet_all": "PASS",
+    "gofmt_cmd_internal": "PASS",
+    "git_diff_check": "PASS",
+    "test_stability": "The pre-existing deadline regression now waits until after the port is recorded instead of relying on fixed delays across saves."
+  },
+  "retained_liabilities": [
+    "Actual lost or interrupted create responses remain ambiguous and cannot automatically settle",
+    "Cleanup, observations, local timeout and cancellation do not themselves refund native reservations",
+    "Unknown attached storage and API failures preserve liabilities",
+    "Host/control-plane loss and live provider settlement remain unqualified"
+  ],
+  "live_jetstream2_status": "BLOCKED pending Greg Chism separate approval; no live calls, resource creation, allocation use or spending in this review",
+  "next_scoped_gap": "Coordinate issue #3 manifest-validated finite live-runner design with issue #4 independent-host cleanup authority and recovery plan before enabling a live test; no overlapping implementation started."
+}

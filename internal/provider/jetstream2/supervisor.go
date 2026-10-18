@@ -129,7 +129,7 @@ func (c *Client) discover(ctx context.Context, r WorkerRecord) (WorkerRecord, er
 		if s.Name != r.Name && s.ID != r.ServerID && s.Metadata["outfitter_reservation"] != r.ReservationID {
 			continue
 		}
-		if !ref.MatchString(s.ID) || s.TenantID != r.ProjectID || s.Metadata["outfitter_owner"] != r.Request.Owner || s.Metadata["outfitter_request"] != r.Request.RequestID || s.Metadata["outfitter_reservation"] != r.ReservationID || s.Name != r.Name || s.Image.ID != r.ImageID || s.Flavor.ID != r.FlavorID || len(s.Volumes) > 0 {
+		if !ref.MatchString(s.ID) || s.TenantID != r.ProjectID || s.Metadata["outfitter_owner"] != r.Request.Owner || s.Metadata["outfitter_request"] != r.Request.RequestID || s.Metadata["outfitter_reservation"] != r.ReservationID || s.Name != r.Name || s.Image.ID != r.ImageID || s.Flavor.ID != r.FlavorID || s.Volumes == nil || len(s.Volumes) > 0 {
 			return r, errors.New("discovered server ownership or storage mismatch")
 		}
 		ss = append(ss, s)

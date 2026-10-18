@@ -98,7 +98,9 @@ func (c *Client) CreateWorker(ctx context.Context, r WorkerRequest) (WorkerRecor
 	}
 	unknown := func(cause error) (WorkerRecord, error) {
 		record.Status = "unknown"
-		record.CreateAmbiguous = record.PortAttempted || record.ServerAttempted
+		// A local deadline/error does not erase a successful recorded response.
+		// Missing IDs after an attempted effect still require reconciliation.
+		record.CreateAmbiguous = record.CreateAmbiguous || (record.PortAttempted && record.PortID == "") || (record.ServerAttempted && record.ServerID == "")
 		record.UnresolvedLiability = true
 		if saveErr := c.journal.Save(context.Background(), record); saveErr != nil {
 			return record, errors.New("provider outcome and durable resource recording unresolved")
@@ -186,8 +188,8 @@ func (c *Client) server(ctx context.Context, r WorkerRecord) (bool, string, erro
 	if s.ID != r.ServerID || s.TenantID != c.config.ProjectID || s.Metadata["outfitter_owner"] != r.Request.Owner || s.Metadata["outfitter_request"] != r.Request.RequestID || s.Metadata["outfitter_reservation"] != r.ReservationID {
 		return true, "", errors.New("server ownership mismatch")
 	}
-	if len(s.Volumes) > 0 {
-		return true, "", errors.New("unexpected attached storage; manual inventory required")
+	if s.Volumes == nil || len(s.Volumes) > 0 {
+		return true, "", errors.New("unknown or unexpected attached storage; manual inventory required")
 	}
 	return true, s.Status, nil
 }

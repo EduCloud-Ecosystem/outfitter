@@ -15,14 +15,15 @@ import (
 // This journal deliberately models the integration seam only. It is NOT a
 // production journal and is never used by the executable.
 type memoryJournal struct {
-	mu         sync.Mutex
-	config     Config
-	records    map[string]WorkerRecord
-	denied     bool
-	supervisor bool
-	saveDelay  time.Duration
-	saveCount  int
-	lifetime   time.Duration
+	expireAfterPort bool
+	mu              sync.Mutex
+	config          Config
+	records         map[string]WorkerRecord
+	denied          bool
+	supervisor      bool
+	saveDelay       time.Duration
+	saveCount       int
+	lifetime        time.Duration
 }
 
 func (j *memoryJournal) Admit(_ context.Context, r WorkerRequest) (WorkerRecord, bool, error) {
@@ -53,6 +54,12 @@ func (j *memoryJournal) Save(_ context.Context, r WorkerRecord) error {
 		time.Sleep(j.saveDelay)
 	}
 	j.records[r.Request.RequestID] = r
+	if j.expireAfterPort && r.PortID != "" && !r.ServerAttempted {
+		j.expireAfterPort = false
+		if remaining := time.Until(r.Deadline); remaining > 0 {
+			time.Sleep(remaining + 10*time.Millisecond)
+		}
+	}
 	return nil
 }
 func (j *memoryJournal) Lookup(_ context.Context, id string) (WorkerRecord, error) {
@@ -450,7 +457,7 @@ func TestExpiredReservationAfterRecordedPortNeverBeginsServer(t *testing.T) {
 	c, f, j := setupCloud(t)
 	auth(t, c)
 	j.lifetime = time.Second
-	j.saveDelay = 370 * time.Millisecond
+	j.expireAfterPort = true
 	record, e := c.CreateWorker(context.Background(), WorkerRequest{"request", "owner", 1, 100})
 	if e == nil || f.postCount != 1 || record.PortID != "port" || record.ServerID != "" || !record.UnresolvedLiability {
 		t.Fatal(record, e, f.postCount)
