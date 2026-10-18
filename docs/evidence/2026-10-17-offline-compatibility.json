@@ -1,0 +1,215 @@
+{
+  "schema_version": 1,
+  "prepared_on": "2026-10-17",
+  "timezone": "America/Los_Angeles",
+  "evidence_scope": "synthetic_offline",
+  "live_readiness": "BLOCKED",
+  "provisioning_enabled": false,
+  "boot_verified": false,
+  "base": "e34604ce2e4ab25c23366a8bea49683899425553",
+  "accepted_proposal": "19efdcad86678d7199995e30e1f4133360fddf65",
+  "implementation_source": "eea4fa3302b6d09f5022f32db8ff5d43098d06fc",
+  "source_files_sha256": {
+    "internal/provider/jetstream2/compatibility.go": "52f96550afacd5113fc6051b84ccc9fcf83c83f51e70acd09c02a38590788720",
+    "internal/provider/jetstream2/compatibility_decode.go": "ce2638893fb8aa23280ec3de492ae4eb606001e468f5413c8628bd485372f09a",
+    "internal/provider/jetstream2/compatibility_test.go": "355bf83252a4f353edaa78e726cc15b91afdbe6826142340dc23819eb55d075b",
+    "internal/provider/jetstream2/compatibility_review_test.go": "894cef733b00d4d78cc2b5040d8d91530954b50a0c47bab6af7a3b80ddd6d9f7",
+    "specs/15-offline-metadata-compatibility.md": "cf4fde8a9a4af8ec2a311259c608f08f6f722204b84326d5c4c93bc879fa34f6"
+  },
+  "independent_review": {
+    "agent": "independent_rescue_review",
+    "initial_head": "826b2f632c1ca1f052e6bd02cb44317c47fb90cc",
+    "initial_result": "CHANGES_REQUESTED",
+    "findings": [
+      {
+        "priority": "P2",
+        "finding": "Protocol 0 falsely matches any",
+        "fix": "Keep protocol 0 unsupported, document upstream prose/source disagreement",
+        "regression": "TestCompatibilityReviewProtocolWireStates"
+      },
+      {
+        "priority": "P2",
+        "finding": "Null rule array element silently becomes empty object",
+        "fix": "Reject null rule objects; rules:null remains UNKNOWN",
+        "regression": "TestCompatibilityReviewRuleContainerStates"
+      },
+      {
+        "priority": "P2",
+        "finding": "Local year checked before UTC normalization",
+        "fix": "Validate UTC years for all time inputs",
+        "regression": "TestCompatibilityReviewUTCYearBounds"
+      }
+    ],
+    "additional_fixes": [
+      {
+        "finding": "Supported aliases differ in digest when another observation is missing",
+        "fix": "Normalize each supported value independently",
+        "regression": "TestCompatibilityReviewProtocolAliasMissingFieldDigest"
+      },
+      {
+        "finding": "Invalid UTF-8 silently replaced during JSON processing",
+        "fix": "Reject invalid raw bytes and typed strings before canonical hashing",
+        "regression": "TestCompatibilityReviewTypedInvalidUTF8"
+      }
+    ],
+    "final_reviewed_source": "eea4fa3302b6d09f5022f32db8ff5d43098d06fc",
+    "final_result": "PASS",
+    "worktree_edited_by_reviewer": false,
+    "independent_race_probes": "PASS",
+    "retained_red_log_verified": true
+  },
+  "runs": [
+    {
+      "log": "compatibility-initial-tests.jsonl",
+      "purpose": "Intermediate incomplete test harness build failed due unused imports",
+      "source": null,
+      "sha256": "34c4cace07ea43784fc2d316b4f9890bec67618366874222a20233d38a72081a",
+      "passed_tests_and_subtests": 0,
+      "compatibility_passes": 0,
+      "rescue_passes": 0,
+      "failed_tests": [],
+      "passed_packages": [],
+      "failure_events": [
+        {
+          "ImportPath": "github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2 [github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2.test]",
+          "Action": "build-fail"
+        },
+        {
+          "Time": "2026-10-17T22:24:56.282123-07:00",
+          "Action": "fail",
+          "Package": "github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2",
+          "Elapsed": 0,
+          "FailedBuild": "github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2 [github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2.test]"
+        }
+      ]
+    },
+    {
+      "log": "compatibility-initial-tests-2.jsonl",
+      "purpose": "Initial focused compatibility tests",
+      "source": null,
+      "sha256": "080e23a7cc97e19655f87bd85ebc38f3646c3f2d87d20527034489d8902b38d3",
+      "passed_tests_and_subtests": 194,
+      "compatibility_passes": 194,
+      "rescue_passes": 0,
+      "failed_tests": [],
+      "passed_packages": [
+        "github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2"
+      ],
+      "failure_events": []
+    },
+    {
+      "log": "compatibility-826b2f6-full-tests.jsonl",
+      "purpose": "Full race suite before independent fixes",
+      "source": "826b2f632c1ca1f052e6bd02cb44317c47fb90cc",
+      "sha256": "ec7adbab5888e40e9854745a137d24276393ee48cc9e4923f42dcabd8c1aa2fc",
+      "passed_tests_and_subtests": 570,
+      "compatibility_passes": 194,
+      "rescue_passes": 220,
+      "failed_tests": [],
+      "passed_packages": [
+        "github.com/EduCloud-Ecosystem/outfitter/cmd/outfitter",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/provider",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/provider/docker",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/ledger",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/consumer",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/broker",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2"
+      ],
+      "failure_events": []
+    },
+    {
+      "log": "compatibility-review-regressions-red.jsonl",
+      "purpose": "All five independently reported problems reproduced before fixes",
+      "source": "826b2f632c1ca1f052e6bd02cb44317c47fb90cc",
+      "sha256": "c634db44d6fdc8c82632d4d420bcd5b9803d36c6273446292cb1616d9e44fbaf",
+      "passed_tests_and_subtests": 0,
+      "compatibility_passes": 0,
+      "rescue_passes": 0,
+      "failed_tests": [
+        "TestCompatibilityReviewProtocolZeroIsNotAny",
+        "TestCompatibilityReviewNullRuleObjectRejected",
+        "TestCompatibilityReviewUTCYearBounds",
+        "TestCompatibilityReviewProtocolAliasMissingFieldDigest",
+        "TestCompatibilityReviewRejectInvalidUTF8"
+      ],
+      "passed_packages": [],
+      "failure_events": [
+        {
+          "Time": "2026-10-17T22:31:51.124002-07:00",
+          "Action": "fail",
+          "Package": "github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2",
+          "Elapsed": 0.557
+        }
+      ]
+    },
+    {
+      "log": "compatibility-review-fixed-tests.jsonl",
+      "purpose": "Focused race tests after fixes",
+      "source": "eea4fa3302b6d09f5022f32db8ff5d43098d06fc",
+      "sha256": "f0c89a5ea2be1e4fa69be16af3df6e35fa44f18a67786e872bb42c2e08b9fbf9",
+      "passed_tests_and_subtests": 231,
+      "compatibility_passes": 231,
+      "rescue_passes": 0,
+      "failed_tests": [],
+      "passed_packages": [
+        "github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2"
+      ],
+      "failure_events": []
+    },
+    {
+      "log": "compatibility-corrected-full-tests.jsonl",
+      "purpose": "Full uncached race suite after independent review fixes",
+      "source": "eea4fa3302b6d09f5022f32db8ff5d43098d06fc",
+      "sha256": "4f9fbeb4719e8f9470de0c32a258553e95c2895c783db4ec1e509579812ad572",
+      "command": "go test -race -count=1 -json ./...",
+      "passed_tests_and_subtests": 607,
+      "compatibility_passes": 231,
+      "rescue_passes": 220,
+      "failed_tests": [],
+      "passed_packages": [
+        "github.com/EduCloud-Ecosystem/outfitter/cmd/outfitter",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/provider",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/provider/docker",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/ledger",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/consumer",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/broker",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2"
+      ],
+      "failure_events": []
+    }
+  ],
+  "preserved": {
+    "prior_rescue_evidence_unchanged": true,
+    "prior_full_race_passes": 376,
+    "prior_rescue_passes": 220,
+    "live_manifest_sha256": "3c9b6e4bfbe0daca29131c7f6a8ae995a6a6988d2897c13089e8e0a939f1e6cc",
+    "original_creator_journal_worker_and_ci_unchanged": true,
+    "unknown_late_effects_and_liabilities_retained": true,
+    "rescue_sweep_limit": 64,
+    "ben_assignments_unchanged": true
+  },
+  "actions": {
+    "live_provider_calls": 0,
+    "provider_credentials_accessed": false,
+    "resources_provisioned": 0,
+    "allocation_consumption": 0,
+    "spending": 0,
+    "accounting_mutations": 0,
+    "live_tests": 0
+  },
+  "limitations": [
+    "Supplied metadata compatibility only; no boot, host, effective filtering or reachability proof",
+    "Timestamps, completeness and bindings are fixture assertions, not authenticated provider evidence",
+    "Only bounded positive-root ordinary image fixtures and the documented vocabulary are supported",
+    "No client, filesystem, environment, clock reads, CLI, creator or ledger integration",
+    "Upstream source pins are not deployed Jetstream2 version evidence"
+  ],
+  "merge_gate": "Independent final source/evidence review and exact-head Broker verification with Docker, recovery and consumer acceptance must pass before merge",
+  "local_checks": {
+    "full_race_suite": "PASS",
+    "vet": "PASS",
+    "formatting": "PASS",
+    "diff_check": "PASS",
+    "document_links": "PASS"
+  }
+}
