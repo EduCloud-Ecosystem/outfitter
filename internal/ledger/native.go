@@ -11,12 +11,23 @@ import (
 // NativeAccount uses explicitly named native units; it never contributes to CPU
 // seconds. Policy is an immutable adapter contract, not credentials or payloads.
 type NativeAccount struct {
-	ID       string          `json:"id"`
-	Provider string          `json:"provider"`
-	Unit     string          `json:"unit"`
-	Scope    string          `json:"scope"`
-	Budget   int64           `json:"budget"`
-	Policy   json.RawMessage `json:"policy"`
+	Experiment *NativeExperiment `json:"experiment,omitempty"`
+	ID         string            `json:"id"`
+	Provider   string            `json:"provider"`
+	Unit       string            `json:"unit"`
+	Scope      string            `json:"scope"`
+	Budget     int64             `json:"budget"`
+	Policy     json.RawMessage   `json:"policy"`
+}
+
+// NativeExperiment is one retained attempt, separate from the adapter policy.
+// Its bounded opaque envelope is interpreted by the adapter, never by accounting.
+type NativeExperiment struct {
+	Envelope      json.RawMessage `json:"envelope"`
+	SHA256        string          `json:"sha256"`
+	RequestID     string          `json:"request_id"`
+	ReservationID string          `json:"reservation_id"`
+	Consumed      bool            `json:"consumed"`
 }
 
 // NativeObservation is a cumulative sample, not a charge or an additive interval.
@@ -28,6 +39,7 @@ type NativeObservation struct {
 	EvidenceSHA256 string    `json:"evidence_sha256"`
 }
 type NativeRecord struct {
+	ExperimentDigest   string              `json:"experiment_digest,omitempty"`
 	Observations       []NativeObservation `json:"observations,omitempty"`
 	RequestID          string              `json:"request_id"`
 	AccountID          string              `json:"account_id"`
@@ -81,11 +93,24 @@ func validateNative(d Data) error {
 		if id != a.ID || !provider.ValidID(id) || !provider.ValidID(a.Provider) || !provider.ValidID(a.Unit) || !provider.ValidID(a.Scope) || a.Budget < 1 || a.Budget > 1000000000 || !json.Valid(a.Policy) || len(a.Policy) > 16384 {
 			return errors.New("invalid native account")
 		}
+		if x := a.Experiment; x != nil {
+			if len(x.Envelope) == 0 || len(x.Envelope) > 8192 || !json.Valid(x.Envelope) || !validHex(x.SHA256, 32) || hash(x.Envelope) != x.SHA256 || !provider.ValidID(x.RequestID) || !validHex(x.ReservationID, 16) {
+				return errors.New("invalid native experiment")
+			}
+			r, exists := d.NativeRuns[x.RequestID]
+			if x.Consumed != exists || (exists && (r.AccountID != id || r.ReservationID != x.ReservationID || r.ExperimentDigest != x.SHA256)) {
+				return errors.New("native experiment consumption mismatch")
+			}
+		}
 	}
 	for id, r := range d.NativeRuns {
 		_, ok := d.NativeAccounts[r.AccountID]
 		if !ok || id != r.RequestID || !provider.ValidID(id) || r.Owner != d.Owner || !validHex(r.ReservationID, 16) || !validHex(r.PayloadHash, 32) || r.CreatedAt.IsZero() || !r.Deadline.After(r.CreatedAt) || r.Deadline.Sub(r.CreatedAt) > time.Hour || r.Reserved < 1 || r.Reserved > 1000000000 || r.Revision < 1 || !json.Valid(r.State) || len(r.State) > 16384 {
 			return errors.New("invalid native reservation")
+		}
+		x := d.NativeAccounts[r.AccountID].Experiment
+		if x == nil && r.ExperimentDigest != "" || x != nil && (!x.Consumed || x.RequestID != id || x.ReservationID != r.ReservationID || x.SHA256 != r.ExperimentDigest) {
+			return errors.New("native reservation experiment mismatch")
 		}
 		if len(r.Observations) > 64 {
 			return errors.New("native observation capacity exceeded")
@@ -112,6 +137,37 @@ func validateNative(d Data) error {
 		u := NativeCalculate(d, id)
 		if u.Reserved > u.Budget || (u.Remaining < 0 && !u.Overrun) {
 			return errors.New("native budget overdrawn without recorded overrun")
+		}
+	}
+	return nil
+}
+
+type nativeExperimentGuard struct {
+	account  string
+	consumed bool
+}
+
+func nativeExperimentGuards(d Data) map[string]nativeExperimentGuard {
+	out := map[string]nativeExperimentGuard{}
+	for id, a := range d.NativeAccounts {
+		if a.Experiment == nil {
+			continue
+		}
+		x := *a.Experiment
+		consumed := x.Consumed
+		x.Consumed = false
+		a.Experiment = &x
+		b, _ := json.Marshal(a)
+		out[id] = nativeExperimentGuard{string(b), consumed}
+	}
+	return out
+}
+func preserveNativeExperiments(before map[string]nativeExperimentGuard, d Data) error {
+	after := nativeExperimentGuards(d)
+	for id, old := range before {
+		next, ok := after[id]
+		if !ok || old.account != next.account || old.consumed && !next.consumed {
+			return errors.New("native experiment cannot be replaced or replenished")
 		}
 	}
 	return nil
