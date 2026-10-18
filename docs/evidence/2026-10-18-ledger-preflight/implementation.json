@@ -1,0 +1,29 @@
+{
+  "scope": "ledger/output pre-serialization in existing authority transaction",
+  "base": "e5599066970750ff3aa8f539bf0391f9c7e32346",
+  "before_source": "before-test-source.go.txt",
+  "before_result": "two refusing serialization fixtures each left an orphan diagnostic under old runtime; unchanged ledger and unknown bytes preserved",
+  "before_claim_boundary": "constructed Store.Update metadata; not an ordinary CLI reachability claim",
+  "focused_tests": {
+    "command": "go test -race -json -count=1 ./internal/ledger -run ^TestSerialization",
+    "passed": 18,
+    "failed": 0
+  },
+  "source_hashes": {
+    "internal/ledger/store.go": "3de6ae308ada34f55e718061421c9e132e295d6c535623e05108a91c76664b12",
+    "internal/ledger/serialization.go": "eef5ed09e877eed6b0bf267d07173e49ba4d00c947e4da54eca7cc04c773a64b",
+    "internal/ledger/serialization_test.go": "ff5e7fc7e152e80ffb3726c93cb853ccd9d86d0abbf08f435e427d6e6778501b",
+    "specs/18-ledger-serialization-preflight.md": "3d91c3a7f9e006be2e2da814f7dbf9a47ae2c69e6046e8e70157a791b30319ee"
+  },
+  "remaining_limits": [
+    "later output/ledger I/O can retain orphans",
+    "post-rename durability uncertainty remains",
+    "physical heap/block/inode capacity not proved",
+    "snapshot/watchdog/recovery barriers unchanged"
+  ],
+  "active_consumer_pin": "5827c84e9952cc67b85e91ceff4282e0ead6923b",
+  "active_consumer_pin_changed": false,
+  "quota_enforced": false,
+  "whole_root_capacity": "UNKNOWN",
+  "live_jetstream2": "BLOCKED"
+}

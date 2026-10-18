@@ -1,0 +1,127 @@
+package ledger
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/EduCloud-Ecosystem/outfitter/internal/provider"
+)
+
+func serializationFixture(t *testing.T, count int) *Store {
+	t.Helper()
+	s, e := Open(filepath.Join(t.TempDir(), "state"), true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.InitProject("project", int64(count*30)); e != nil {
+		t.Fatal(e)
+	}
+	e = s.Update(func(d *Data) error {
+		for i := 0; i < count; i++ {
+			id := fmt.Sprintf("run%d", i)
+			w := provider.Request{SchemaVersion: 1, RequestID: id, ProjectID: "project", Image: "sha256:" + strings.Repeat("a", 64), Command: []string{"true"}, InputDir: "/fixture/input", RecipeDir: "/fixture/recipe", CPUs: 1, MemoryMB: 32, PIDsLimit: 1, TimeoutSeconds: 30, MaxOutputBytes: 1048576, Isolation: "reviewed-local", AllowSupervisedReaper: true}
+			now := time.Date(2026, 10, 18, 0, 0, 0, 0, time.UTC)
+			h := sha256.Sum256([]byte(d.Owner + ":" + id))
+			d.Runs[id] = provider.Record{Receipt: provider.Receipt{Admitted: true, SchemaVersion: 1, RequestID: id, ProjectID: w.ProjectID, Status: "reserved", Image: w.Image, CreatedAt: now, Deadline: now.Add(30 * time.Second), UnresolvedLiability: true, Compute: provider.Compute{Reserved: 30, Provenance: "reserved"}, TeardownRisk: "supervised external watchdog; no provider self-expiry"}, Request: w, PayloadHash: w.Hash(), Name: "outfitter-" + hex.EncodeToString(h[:16]), Owner: d.Owner, PID: os.Getpid()}
+		}
+		return nil
+	})
+	if e != nil {
+		t.Fatal(e)
+	}
+	return s
+}
+func serializationRead(t *testing.T, path string) []byte {
+	t.Helper()
+	b, e := os.ReadFile(path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	return b
+}
+func serializationFiles(t *testing.T, root string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	e := filepath.WalkDir(root, func(p string, d os.DirEntry, e error) error {
+		if e != nil {
+			return e
+		}
+		rel, e := filepath.Rel(root, p)
+		if e != nil {
+			return e
+		}
+		if d.IsDir() {
+			out[rel] = "directory"
+		} else {
+			b := serializationRead(t, p)
+			h := sha256.Sum256(b)
+			out[rel] = hex.EncodeToString(h[:])
+		}
+		return nil
+	})
+	if e != nil {
+		t.Fatal(e)
+	}
+	return out
+}
+func TestSerializationRefusalHasNoSidecarEffects(t *testing.T) {
+	for _, mode := range []string{"record-serializer", "aggregate-capacity"} {
+		t.Run(mode, func(t *testing.T) {
+			s := serializationFixture(t, 1)
+			unknown := filepath.Join(s.Dir, "unknown.bin")
+			if e := os.WriteFile(unknown, []byte("unknown owner must survive"), 0600); e != nil {
+				t.Fatal(e)
+			}
+			before := serializationFiles(t, s.Dir)
+			e := s.Update(func(d *Data) error {
+				r := d.Runs["run0"]
+				r.Stdout = "preflight-output"
+				if mode == "record-serializer" {
+					bad := time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+					r.StartedAt = &bad
+				} else {
+					d.Version = 3
+					d.NativeAccounts = map[string]NativeAccount{}
+					d.NativeRuns = map[string]NativeRecord{}
+					expanded := json.RawMessage(`"` + strings.Repeat("<", 16000) + `"`)
+					for i := 0; i < MaxRecords-1; i++ {
+						account, id := fmt.Sprintf("account%d", i), fmt.Sprintf("native%d", i)
+						d.NativeAccounts[account] = NativeAccount{ID: account, Provider: "offline", Unit: "su", Scope: "fixture", Budget: 1, Policy: expanded}
+						d.NativeRuns[id] = NativeRecord{RequestID: id, AccountID: account, ReservationID: strings.Repeat("a", 32), Owner: d.Owner, PayloadHash: strings.Repeat("b", 64), Reserved: 1, CreatedAt: r.CreatedAt, Deadline: r.CreatedAt.Add(time.Minute), Revision: 1, State: expanded}
+					}
+				}
+				d.Runs["run0"] = r
+				// Both fixtures pass logical validation; the refusal is actual serialization.
+				if e := validate(*d); e != nil {
+					t.Fatal("fixture failed preliminary validation", e)
+				}
+				return nil
+			})
+			if e == nil {
+				t.Fatal("serialization refusal not reached")
+			}
+			if mode == "aggregate-capacity" && !strings.Contains(e.Error(), "store exceeds") {
+				t.Fatal("wrong capacity refusal", e)
+			}
+			after := serializationFiles(t, s.Dir)
+			if fmt.Sprint(before) != fmt.Sprint(after) {
+				t.Fatalf("serialization refusal changed filesystem: before=%v after=%v error=%v", before, after, e)
+			}
+			u, e := s.Usage("project")
+			if e != nil || u.Unknown != 30 || u.Reserved != 30 || u.Charged != 0 {
+				t.Fatal("old accounting changed", u, e)
+			}
+		})
+	}
+}
+
+// Ensure byte comparison is used in later mixed diagnostic controls.
+var _ = bytes.Equal
