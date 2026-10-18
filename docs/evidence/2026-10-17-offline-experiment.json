@@ -1,0 +1,244 @@
+{
+  "schema_version": 1,
+  "prepared_on": "2026-10-17",
+  "timezone": "America/Los_Angeles",
+  "evidence_scope": "synthetic_offline",
+  "live_readiness": "BLOCKED",
+  "guest_execution": "NOT_RUN",
+  "base": "5700ff52b1182d63f51723dbadb700c488cfc6ac",
+  "implementation_source": "0172b14ef213ba98f0f39be328c93dd57784bcfb",
+  "source_files_sha256": {
+    "internal/ledger/native.go": "a3910775658d9148cf2db01b7e4502fd3a5e1df3b6a044a4feb9eff73a3ebec3",
+    "internal/ledger/native_experiment_test.go": "6808c7c26cad88ce7f74e7dddebb2d359061602780d1b7fc88e2b03b3787f0af",
+    "internal/ledger/store.go": "1d948e3bd05a353225efcd0338d2d8dae5670cada2bd00092b5ca9b46351f89c",
+    "internal/provider/jetstream2/experiment.go": "59712eb3c14b0049ed81a24a2fe285554b5e9af610e829529c35bcb5d5a6de7f",
+    "internal/provider/jetstream2/experiment_controls_test.go": "de1a4b2c7b4b1ec5dc719f773aea6c71a58315dcac6ee6d5416ff89fc58d6f6b",
+    "internal/provider/jetstream2/experiment_review_test.go": "da8b6df723231cc9c06fd0acf5ff3753309c9e01eb355c4957b0114dc8d7900a",
+    "internal/provider/jetstream2/experiment_test.go": "f1426f8cd9e500c7ea9dea2a7c490b9067d4b67e80be775af481451dd3539b85",
+    "internal/provider/jetstream2/journal.go": "2aaca19c780a0bae86e80f71612b614ffceff326dc5c2734c6152898466ccb55",
+    "internal/provider/jetstream2/worker.go": "a08e7eada902223b5a961470c4a2b71d20535ad7fa466169f97248fe0b4099f0",
+    "specs/16-offline-experiment-enforcement.md": "38b52028aa066d1cc77b54a6ce51cead2b2bb3f0b4c1f9c5ecb05136f82285b9"
+  },
+  "independent_review": {
+    "agent": "independent_rescue_review",
+    "spec_head": "eecdfc08a0f142b960fc298ec2b4c18d857eedd8",
+    "spec_result": "PASS",
+    "implementation_result": "PASS",
+    "initial_head": "75c07cd48e69366039e6e17e4daaadf7d3253bbd",
+    "initial_result": "CHANGES_REQUESTED",
+    "findings": [
+      {
+        "priority": "P2",
+        "finding": "Opaque envelope bytes changed during outer JSON serialization, producing an unreadable ledger after a successful write",
+        "fix": "Reject envelope bytes not preserved exactly by outer JSON serialization before persistence",
+        "regression": "TestNativeExperimentReviewStableEnvelopeBytes",
+        "negative_cases": [
+          "whitespace",
+          "less_than",
+          "greater_than",
+          "ampersand"
+        ],
+        "positive_controls": [
+          "compact",
+          "escaped"
+        ]
+      }
+    ],
+    "independent_initial_experiment_passes": 116,
+    "additional_effect_boundary_probes": 6,
+    "worktree_edited_by_reviewer": false,
+    "final_reviewed_source": "0172b14ef213ba98f0f39be328c93dd57784bcfb",
+    "isolated_recheck": {
+      "repository_experiment_passes": 129,
+      "additional_independent_probe_passes": 9,
+      "total_passes": 138,
+      "passed_packages": 2,
+      "race": true,
+      "log_sha256": "de5c0d6b826d5dbd7596381c4f28add7a2965d34b768240b47246afe27f85734"
+    }
+  },
+  "runs": [
+    {
+      "log": "experiment-initial-tests.jsonl",
+      "sha256": "cea9ae2bb58f0071d4fd100da7de0b6c14b220c166db6b65283d55f1ef25e234",
+      "passed_tests_and_subtests": 68,
+      "failed_tests": [],
+      "passed_packages": [
+        "github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2"
+      ],
+      "failed_packages": []
+    },
+    {
+      "log": "experiment-controls-tests.jsonl",
+      "sha256": "37a7295552d159490415bbd88b85cf9d27eb9dbe9e34c7eb34e6f039fe8a9ef3",
+      "passed_tests_and_subtests": 88,
+      "failed_tests": [
+        "TestNativeExperimentSettlementDoesNotReplenish"
+      ],
+      "passed_packages": [
+        "github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2"
+      ],
+      "failed_packages": [
+        "github.com/EduCloud-Ecosystem/outfitter/internal/ledger"
+      ]
+    },
+    {
+      "log": "experiment-controls-tests-2.jsonl",
+      "sha256": "da79aa532b859683c68973c293fe11da4250ee453303f13db5cd44d18ee0bac0",
+      "passed_tests_and_subtests": 105,
+      "failed_tests": [],
+      "passed_packages": [
+        "github.com/EduCloud-Ecosystem/outfitter/internal/ledger",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2"
+      ],
+      "failed_packages": []
+    },
+    {
+      "log": "experiment-final-focused-tests.jsonl",
+      "sha256": "fe74b1a087ceb3bd83925b5890929842c89bdbf25d97bd9ff64c1461e09b9de2",
+      "passed_tests_and_subtests": 116,
+      "failed_tests": [],
+      "passed_packages": [
+        "github.com/EduCloud-Ecosystem/outfitter/internal/ledger",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2"
+      ],
+      "failed_packages": []
+    },
+    {
+      "log": "experiment-initial-full-tests.jsonl",
+      "source": "75c07cd48e69366039e6e17e4daaadf7d3253bbd",
+      "command": "go test -race -count=1 -json ./...",
+      "sha256": "5613403a084a96b38c876a7007a12207c3c0677ec078973d2c97b483d002a8d7",
+      "passed_tests_and_subtests": 723,
+      "experiment_passes": 116,
+      "compatibility_passes": 231,
+      "rescue_passes": 220,
+      "passed_packages": [
+        "github.com/EduCloud-Ecosystem/outfitter/internal/provider/docker",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/provider",
+        "github.com/EduCloud-Ecosystem/outfitter/cmd/outfitter",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/ledger",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/consumer",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/broker",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2"
+      ],
+      "failed_tests": [],
+      "failed_packages": []
+    },
+    {
+      "log": "experiment-envelope-regression-red.jsonl",
+      "sha256": "023e454922d73577324f8c75e21af87f3d4892c0730b8f58b2d0942f1012d12e",
+      "passed_tests_and_subtests": 2,
+      "failed_tests": [
+        "TestNativeExperimentReviewStableEnvelopeBytes/less_than",
+        "TestNativeExperimentReviewStableEnvelopeBytes/greater_than",
+        "TestNativeExperimentReviewStableEnvelopeBytes/ampersand",
+        "TestNativeExperimentReviewStableEnvelopeBytes/whitespace",
+        "TestNativeExperimentReviewStableEnvelopeBytes"
+      ],
+      "passed_packages": [],
+      "failed_packages": [
+        "github.com/EduCloud-Ecosystem/outfitter/internal/ledger"
+      ]
+    },
+    {
+      "log": "experiment-envelope-regression-green.jsonl",
+      "sha256": "8c7da93f616f595b4dffc285a20f510ecc43e026a3b3a526f8262cfa9f61e49e",
+      "passed_tests_and_subtests": 25,
+      "failed_tests": [],
+      "passed_packages": [
+        "github.com/EduCloud-Ecosystem/outfitter/internal/ledger"
+      ],
+      "failed_packages": []
+    },
+    {
+      "log": "experiment-corrected-full-tests.jsonl",
+      "source": "0172b14ef213ba98f0f39be328c93dd57784bcfb",
+      "command": "go test -race -count=1 -json ./...",
+      "sha256": "af7dee50f65c47f8966cec5bf26afa87837656540c364ff002271df7c802d7cc",
+      "passed_tests_and_subtests": 736,
+      "experiment_passes": 129,
+      "compatibility_passes": 231,
+      "rescue_passes": 220,
+      "passed_packages": [
+        "github.com/EduCloud-Ecosystem/outfitter/internal/provider",
+        "github.com/EduCloud-Ecosystem/outfitter/cmd/outfitter",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/provider/docker",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/ledger",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/consumer",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/broker",
+        "github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2"
+      ],
+      "failed_tests": [],
+      "failed_packages": []
+    }
+  ],
+  "limits": {
+    "experiment_envelope_bytes": 8192,
+    "profile_bytes": 2048,
+    "snapshot_bytes": 4096,
+    "evidence_rules_each": 8,
+    "native_policy_bytes": 16384,
+    "native_state_bytes": 16384,
+    "total_attempts": 1,
+    "rescue_sweeps": 64
+  },
+  "exercised_boundaries": [
+    "One actual simulated port and server through CreateWorker with both durable rescue ACKs",
+    "No-effect refusals for bound metadata, identities and time windows",
+    "Compatibility reevaluated under serialized admission and after ACK/final pre-POST fault boundary",
+    "15 creator SIGKILL boundaries after reservation, intents, scopes, ACK exchange, POST and saved responses",
+    "Two creator processes serialize to one attempt and two effects",
+    "Restart/repeated request lookup-only; changed identity/payload refuses",
+    "Native ledger zero settlement and held restore/activation preserve consumed attempt",
+    "Read-time marker/reservation crosslinks and deep mutation guards",
+    "B cleanup without A; lost and late effects remain observational and unsettled"
+  ],
+  "preserved": {
+    "docs/evidence/2026-10-17-offline-rescue.json": {
+      "unchanged": true,
+      "sha256": "05158aedbbbbee0e6083ba1cf44dcef2009e6b8a271bc5f8e0047849e985e659"
+    },
+    "docs/evidence/2026-10-17-offline-compatibility.json": {
+      "unchanged": true,
+      "sha256": "4a1edd7850b8da462a90a1784011b8eb87fd3925aa21211671017a7eac4db360"
+    },
+    "docs/manifests/jetstream2-live-test.proposed.json": {
+      "unchanged": true,
+      "sha256": "3c9b6e4bfbe0daca29131c7f6a8ae995a6a6988d2897c13089e8e0a939f1e6cc"
+    },
+    ".github/workflows/broker.yml": {
+      "unchanged": true,
+      "sha256": "0942d3dff57fff44acea26436dfbf8ff3405fabfbd3be11c6db0ffaee22c45c7"
+    }
+  },
+  "retained_failures": [
+    "Intermediate ledger test fixture omitted initialization of an empty NativeRuns map after JSON reload; fixture corrected, implementation unchanged for that failure",
+    "Independent P2 serialization defect reproduced before fix in four negative cases; stable compact/escaped controls passed before and after correction"
+  ],
+  "actions": {
+    "live_provider_calls": 0,
+    "provider_credentials_accessed": false,
+    "resources_provisioned_on_live_provider": 0,
+    "allocation_consumption": 0,
+    "spending": 0,
+    "guest_execution": "NOT_RUN"
+  },
+  "limitations": [
+    "Same-host process/filesystem evidence and injected loopback HTTPS provider only",
+    "No global prevention of hostile administrator rollback or identical-path copied hosts",
+    "Supplied timestamps/completeness and metadata are not authenticated provider evidence",
+    "No guest boot/private reachability/host/network-isolation qualification",
+    "B absence remains observational; no receipt settlement or refunds",
+    "No live constructor, CLI, credential lookup, deployment switch or guest transport"
+  ],
+  "merge_gate": "Independent implementation/evidence review and exact-head Broker verification including Docker/recovery/consumer checks must pass before merge",
+  "initial_implementation_source": "75c07cd48e69366039e6e17e4daaadf7d3253bbd",
+  "local_checks": {
+    "vet": "PASS",
+    "formatting": "PASS",
+    "diff_check": "PASS",
+    "document_links": "PASS",
+    "full_race_suite": "PASS"
+  }
+}

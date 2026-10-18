@@ -27,6 +27,8 @@ used and what it cost, and it will not spend past a budget you set.
 > cleanup handoffs in local simulations and does not qualify live operation.
 > The [offline metadata evaluator](docs/JETSTREAM2-OFFLINE-COMPATIBILITY.md) compares
 > synthetic declarations with a profile; matching metadata never enables provisioning.
+The [one-attempt offline experiment](docs/JETSTREAM2-OFFLINE-EXPERIMENT.md) enforces
+that comparison in the simulated creator, with guest execution and live testing blocked.
 
 ## Why
 
