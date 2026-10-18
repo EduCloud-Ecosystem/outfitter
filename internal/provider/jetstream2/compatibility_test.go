@@ -656,7 +656,7 @@ func TestCompatibilityMalformedProfilesAndBounds(t *testing.T) {
 	})
 }
 func TestCompatibilityNoIOOrAccountingEffects(t *testing.T) {
-	allowed := map[string]bool{"bytes": true, "crypto/sha256": true, "encoding/hex": true, "encoding/json": true, "errors": true, "net/netip": true, "sort": true, "strconv": true, "strings": true, "time": true, "io": true, "reflect": true}
+	allowed := map[string]bool{"bytes": true, "crypto/sha256": true, "encoding/hex": true, "encoding/json": true, "errors": true, "net/netip": true, "sort": true, "strconv": true, "strings": true, "time": true, "io": true, "reflect": true, "unicode/utf8": true}
 	for _, name := range []string{"compatibility.go", "compatibility_decode.go"} {
 		f, e := parser.ParseFile(token.NewFileSet(), name, nil, 0)
 		if e != nil {

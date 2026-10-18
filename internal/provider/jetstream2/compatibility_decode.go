@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Decoders accept only the closed Outfitter fixture envelope, not raw provider
@@ -35,7 +36,7 @@ func DecodeCompatibilitySnapshot(raw []byte) (CompatibilitySnapshot, error) {
 	return n, nil
 }
 func compatibilityJSON(raw []byte, out any) error {
-	if len(raw) == 0 || len(raw) > compatibilityBytes || !json.Valid(raw) {
+	if len(raw) == 0 || len(raw) > compatibilityBytes || !utf8.Valid(raw) || !json.Valid(raw) {
 		return errors.New("INVALID_JSON")
 	}
 	d := json.NewDecoder(bytes.NewReader(raw))
@@ -52,6 +53,33 @@ func compatibilityJSON(raw []byte, out any) error {
 		return errors.New("INVALID_JSON")
 	}
 	return nil
+}
+
+// Go's JSON encoder replaces invalid UTF-8. Reject it before hashing so distinct
+// malformed typed strings cannot collapse to the same canonical bytes.
+func compatibilityUTF8(v reflect.Value) bool {
+	if !v.IsValid() || v.Type() == reflect.TypeOf(time.Time{}) {
+		return true
+	}
+	switch v.Kind() {
+	case reflect.String:
+		return utf8.ValidString(v.String())
+	case reflect.Pointer, reflect.Interface:
+		return v.IsNil() || compatibilityUTF8(v.Elem())
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			if !compatibilityUTF8(v.Field(i)) {
+				return false
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < v.Len(); i++ {
+			if !compatibilityUTF8(v.Index(i)) {
+				return false
+			}
+		}
+	}
+	return true
 }
 func compatibilityTokens(d *json.Decoder, depth int) error {
 	if depth > 16 {

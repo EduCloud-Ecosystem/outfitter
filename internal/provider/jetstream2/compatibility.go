@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/netip"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -104,6 +105,17 @@ type CompatibilityObservedRule struct {
 	RemoteGroup        Observed[string]                `json:"remote_group,omitzero"`
 	RemoteAddressGroup Observed[string]                `json:"remote_address_group,omitzero"`
 }
+
+func (r *CompatibilityObservedRule) UnmarshalJSON(raw []byte) error {
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return errors.New("INVALID_RULE_OBJECT")
+	}
+	type plainRule CompatibilityObservedRule
+	d := json.NewDecoder(bytes.NewReader(raw))
+	d.DisallowUnknownFields()
+	return d.Decode((*plainRule)(r))
+}
+
 type CompatibilitySnapshot struct {
 	Version         int                                   `json:"version"`
 	ConfigDigest    string                                `json:"config_digest"`
@@ -156,7 +168,10 @@ type CompatibilityReport struct {
 func closedCompatibilityReport() CompatibilityReport {
 	return CompatibilityReport{Version: 1, EvidenceScope: "synthetic_offline", LiveReadiness: "BLOCKED", Checks: []CompatibilityCheck{}}
 }
-func compatibilityTime(t time.Time) bool { return !t.IsZero() && t.Year() >= 2000 && t.Year() <= 2100 }
+func compatibilityTime(t time.Time) bool {
+	t = t.UTC()
+	return !t.IsZero() && t.Year() >= 2000 && t.Year() <= 2100
+}
 func compatibilityHash(s string) bool {
 	if len(s) != 64 {
 		return false
@@ -165,6 +180,9 @@ func compatibilityHash(s string) bool {
 	return e == nil && strings.ToLower(s) == s
 }
 func compatibilityDigest(kind string, v any) (string, error) {
+	if !compatibilityUTF8(reflect.ValueOf(v)) {
+		return "", errors.New("INVALID_TEXT")
+	}
 	b, e := json.Marshal(v)
 	if e != nil || len(b) > compatibilityBytes {
 		return "", errors.New("INVALID_OR_OVERSIZED_INPUT")
@@ -190,7 +208,7 @@ func CompatibilityBindings(c Config, p Policy) (string, string, error) {
 }
 func protocol(p CompatibilityProtocol) (CompatibilityProtocol, bool) {
 	switch p {
-	case "any", "0":
+	case "any":
 		return "any", true
 	case "tcp", "6":
 		return "tcp", true
@@ -351,21 +369,18 @@ func compatibilitySnapshot(s CompatibilitySnapshot) (CompatibilitySnapshot, erro
 		}
 		s.Rules.value = append([]CompatibilityObservedRule{}, s.Rules.value...)
 		for i, r := range s.Rules.value {
-			n, status, _ := observedRule(r)
-			if status == "MATCH" {
-				// Preserve absence/null states; normalize only present supported values.
-				if !r.Protocol.null {
-					r.Protocol = CompatibilityValue(n.Protocol)
+			// Normalize supported values independently of other observations.
+			// Never replace a missing or null field with a fabricated value.
+			if observation(r.Protocol) == "" {
+				if p, ok := protocol(r.Protocol.value); ok {
+					r.Protocol = CompatibilityValue(p)
 				}
-				if !r.CIDR.null {
-					r.CIDR = CompatibilityValue(n.CIDR)
-				}
-				if n.PortMin == nil {
+				if (r.Protocol.value == "tcp" || r.Protocol.value == "udp") && observation(r.PortMin) == "" && observation(r.PortMax) == "" && r.PortMin.value == 1 && r.PortMax.value == 65535 {
 					r.PortMin = CompatibilityNull[int64]()
 					r.PortMax = CompatibilityNull[int64]()
 				}
-				s.Rules.value[i] = r
 			}
+			s.Rules.value[i] = r
 		}
 		sort.Slice(s.Rules.value, func(i, j int) bool {
 			a, b := s.Rules.value[i], s.Rules.value[j]

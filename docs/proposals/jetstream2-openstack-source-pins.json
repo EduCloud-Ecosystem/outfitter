@@ -46,6 +46,11 @@
           "path": "neutron/db/securitygroups_db.py",
           "source": "https://github.com/openstack/neutron/blob/8e0b546521abde0d96e68169a60c043a5053e684/neutron/db/securitygroups_db.py",
           "sha256": "d9c198b32cc5be5186b341811e69c45346ff74ddc07ad2e4ab19ecbfaac58fc2"
+        },
+        {
+          "path": "neutron/common/_constants.py",
+          "source": "https://github.com/openstack/neutron/blob/8e0b546521abde0d96e68169a60c043a5053e684/neutron/common/_constants.py",
+          "sha256": "0f656388b7db80eb67cb311ce70bb17c375001cf5dfeddea8bff366d30286888"
         }
       ]
     },

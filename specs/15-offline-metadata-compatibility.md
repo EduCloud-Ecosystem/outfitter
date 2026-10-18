@@ -29,7 +29,8 @@ The schema mapping and immutable upstream pins are in
 Snapshot fields are an Outfitter envelope, not an exhaustive raw OpenStack schema.
 Both JSON inputs are limited to 65,536 bytes and 128 rules, with nesting at most
 16. Reject duplicate keys at every level, wrong-case/unknown keys, trailing data,
-invalid types, overflow and unsupported versions. Errors and reports use fixed
+invalid types, invalid UTF-8, overflow and unsupported versions. Null rule array
+elements are malformed; a null rules observation remains UNKNOWN. Errors and reports use fixed
 reason codes; input text, identifiers, URLs, credentials and upstream bodies are
 never echoed. Typed inputs receive the same validation and size limits.
 
@@ -65,12 +66,14 @@ means `any`; both null port bounds mean unrestricted ports; explicit null remote
 selectors preserve their own meaning and never imply a harmless rule.
 
 The initial protocol vocabulary is any, TCP, UDP, ICMP and IPv6-ICMP. Accept their
-canonical names and documented numbers (0, 6, 17, 1, 58, as strings or integers);
+canonical names and numbers (6, 17, 1, 58, as strings or integers);
 normalize `icmpv6` to `ipv6-icmp`. Booleans/floats are malformed. Only TCP/UDP
 support ordered ports 1–65,535, or both null for all ports; normalize the full
 range to null/null. ICMP endpoints are type/code 0–255, allowing type with null
 code, but never code without type. ICMP must match its IP family. Any protocol
-requires null/null bounds. Unsupported protocols are UNKNOWN.
+requires null/null bounds. Protocol `0` remains unsupported because API prose
+and the pinned Neutron source disagree about its meaning. Unsupported protocols
+are UNKNOWN in snapshots and rejected in profiles.
 
 Require explicit canonical CIDRs matching the ethertype. A null prefix maps to
 that family's /0 only when both dynamic selectors are explicitly null. Nonempty
@@ -88,7 +91,7 @@ comparison. No SSH, DNS, HTTPS, IPv6 or route defaults are introduced.
 
 ## Time and canonical binding
 
-Times must lie in years 2000–2100. Normalize them to UTC; preserve precision.
+Normalize times to UTC before requiring years 2000–2100; preserve precision.
 The evaluation interval is `not_before <= now < expires_at`. Snapshot time must
 satisfy `not_before <= observed_at <= now`, and age must be at most the profile's
 1–3,600 second maximum (equality is accepted). Invalid `now` rejects; expired,
@@ -97,7 +100,9 @@ future or stale evidence yields fixed nonmatching checks. No clock is read.
 Canonical bytes are Go JSON encoding of fixed structs, UTC times and normalized,
 lexically sorted rules. Sort snapshots by semantic rule bytes and then ID;
 normalize supported aliases and CIDRs before hashing, without dropping missing
-or null states. Input slice order must not be modified. Digests are SHA-256 over
+or null states. Supported aliases normalize even when another rule field is
+missing or unsupported. Invalid UTF-8 in typed strings is rejected before
+serialization. Input slice order must not be modified. Digests are SHA-256 over
 `outfitter-metadata-compatibility-v1` + NUL + kind + NUL + canonical bytes, for
 kinds `config`, `policy`, `profile` and `snapshot`. Normalize policy approval time
 only; all its fields, including rescue policy if present, remain bound. Profile

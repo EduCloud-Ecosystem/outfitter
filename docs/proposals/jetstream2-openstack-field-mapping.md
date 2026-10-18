@@ -86,7 +86,12 @@ Paths below are relative to each rule object:
 [Rule API](https://docs.openstack.org/api-ref/network/v2/#show-security-group-rule)
 
 The pinned [Neutron definitions](https://github.com/openstack/neutron/blob/8e0b546521abde0d96e68169a60c043a5053e684/neutron/extensions/securitygroup.py#L156)
-normalize all-protocol values to null. Their schema defaults protocol, port bounds
+normalize `null` and `any` to null. The [pinned any-protocol constant](https://github.com/openstack/neutron/blob/8e0b546521abde0d96e68169a60c043a5053e684/neutron/common/_constants.py#L41-L46)
+excludes protocol `0`, which remains the numeric string `0` in the converter.
+This conflicts with the API prose describing `0` as all protocols. The offline
+evaluator conservatively treats `0` as unsupported, never as `any`; these pins
+do not establish the version or behavior deployed on Jetstream2.
+The schema defaults protocol, port bounds
 and remote selectors to null. The [rule validator](https://github.com/openstack/neutron/blob/8e0b546521abde0d96e68169a60c043a5053e684/neutron/db/securitygroups_db.py#L770)
 permits both port bounds null; full port ranges can be normalized to this form.
 For transport ports, nonnull bounds must be ordered and nonzero; ICMP type/code
