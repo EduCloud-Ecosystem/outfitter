@@ -227,51 +227,23 @@ func validate(d Data) error {
 }
 
 func (s *Store) write(d Data) error {
-	// Persist diagnostic blobs before the authority transaction. A crash can leave
-	// an unreferenced blob, never an authority record requiring missing diagnostics.
-	if e := validate(d); e != nil {
-		return e
-	}
-	if d.Version >= 2 && d.Authority.StatePath != s.Dir {
-		return errors.New("authority path mismatch")
-	}
-	compact := d
-	compact.Runs = make(map[string]provider.Record, len(d.Runs))
-	for id, r := range d.Runs {
-		if r.Stdout != "" || r.Stderr != "" {
-			digest, size, e := s.saveOutput(r.Stdout, r.Stderr)
-			if e != nil {
-				r.OutputSHA256 = ""
-				r.OutputBytes = 0
-				r.OutputError = "execution diagnostics could not be persisted; authority accounting remains intact"
-			} else {
-				r.OutputSHA256 = digest
-				r.OutputBytes = size
-				r.OutputError = ""
-			}
-		}
-		r.Stdout = ""
-		r.Stderr = ""
-		compact.Runs[id] = r
-	}
-	if e := validate(compact); e != nil {
-		return e
-	}
-	for _, r := range compact.Runs {
-		encoded, e := json.Marshal(r)
-		if e != nil {
-			return e
-		}
-		if len(encoded) > maxRecordBytes {
-			return errors.New("authority record exceeds reserved metadata capacity")
-		}
-	}
-	b, e := json.Marshal(compact)
-	if len(b) > maxLedgerBytes {
-		return errors.New("authority store exceeds reserved metadata capacity")
-	}
+	// Prepare every possible diagnostic outcome before creating sidecars. Later
+	// I/O failure can still leave an orphan; uncertain accounting is never refunded.
+	plan, e := prepareLedgerWrite(d, s.Dir, maxRecordBytes, maxLedgerBytes)
 	if e != nil {
 		return e
+	}
+	for id, output := range plan.outputs {
+		if e := s.persistPlannedOutput(output); e != nil {
+			plan.compact.Runs[id] = diagnosticFailure(plan.compact.Runs[id])
+		}
+	}
+	b, e := marshalCompact(plan.compact, maxRecordBytes, maxLedgerBytes)
+	if e != nil {
+		return e
+	}
+	if len(b) > plan.maximumBytes {
+		return errors.New("authority serialization exceeded prepared diagnostic outcomes")
 	}
 	f, e := os.CreateTemp(s.Dir, ".ledger-")
 	if e != nil {
@@ -390,29 +362,17 @@ func (s *Store) Record(id string) (provider.Record, error) {
 }
 
 // Diagnostic bytes are never required to read authority, cancel or reap a run.
-func (s *Store) saveOutput(stdout, stderr string) (string, int64, error) {
-	data, e := json.Marshal(struct {
-		Stdout string `json:"stdout"`
-		Stderr string `json:"stderr"`
-	}{stdout, stderr})
-	if e != nil {
-		return "", 0, e
-	}
-	if len(data) > (6<<20)+512 {
-		return "", 0, errors.New("diagnostic encoding exceeds bound")
-	}
-	digest := sha256.Sum256(data)
-	name := hex.EncodeToString(digest[:])
+func (s *Store) saveOutput(data []byte, name string) error {
 	dir := filepath.Join(s.Dir, "outputs")
-	if e = os.MkdirAll(dir, 0700); e != nil {
-		return "", 0, e
+	if e := os.MkdirAll(dir, 0700); e != nil {
+		return e
 	}
 	if st, e := os.Lstat(dir); e != nil || !st.IsDir() || st.Mode()&os.ModeSymlink != 0 {
-		return "", 0, errors.New("invalid diagnostic directory")
+		return errors.New("invalid diagnostic directory")
 	}
 	f, e := os.CreateTemp(dir, ".output-")
 	if e != nil {
-		return "", 0, e
+		return e
 	}
 	temp := f.Name()
 	defer os.Remove(temp)
@@ -424,20 +384,20 @@ func (s *Store) saveOutput(stdout, stderr string) (string, int64, error) {
 		e = closeErr
 	}
 	if e != nil {
-		return "", 0, e
+		return e
 	}
 	if e = os.Rename(temp, filepath.Join(dir, name+".json")); e != nil {
-		return "", 0, e
+		return e
 	}
 	directory, e := os.Open(dir)
 	if e != nil {
-		return "", 0, e
+		return e
 	}
 	defer directory.Close()
 	if e = directory.Sync(); e != nil {
-		return "", 0, e
+		return e
 	}
-	return name, int64(len(data)), nil
+	return nil
 }
 func (s *Store) Receipt(id string) (provider.Receipt, error) {
 	r, e := s.Record(id)
