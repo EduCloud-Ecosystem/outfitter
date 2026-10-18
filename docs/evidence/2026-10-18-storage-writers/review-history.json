@@ -1,0 +1,32 @@
+{
+  "format": "outfitter-storage-writers-review-history-v1",
+  "scope": "offline qualification; no runtime or active-pin change",
+  "review_gate": "independent final candidate and coordinating root review required; merge held",
+  "preserved_findings": [
+    {
+      "source": "implementer source check and independent spec reviewer",
+      "at_commit": "ab601f2f4aeeb29ca8433c5ede4c5b48901916d4",
+      "finding": "Compact-record refusal wording could imply normal CLI reachability of production 96 KiB cap despite bounded request/receipt fields.",
+      "resolution": "Separate 1-byte injected cap ordering control. Production 98,304-byte cap reachability remains NOT_DEMONSTRATED. Ordinary serializer amplification has its own connected control."
+    },
+    {
+      "source": "coordinating root review",
+      "at_commit": "ab601f2f4aeeb29ca8433c5ede4c5b48901916d4",
+      "finding": "Destination failure after source fence does not necessarily leave both authorities non-admitting: directory sync can fail after rename published active destination.",
+      "resolution": "Spec distinguishes pre-publication held state from post-publication active/uncertain state. New connected destination directory-sync fault control verifies source fenced, destination visibly active and retry idempotence; future admission fencing remains a requirement."
+    },
+    {
+      "source": "initial local qualification run",
+      "evidence": "initial-failed/report.json",
+      "finding": "Snapshot-growth injection failed to reach hook because macOS canonical source path differed from noncanonical temporary path. Fake provider create occurred once; the expected growth refusal was not exercised.",
+      "resolution": "Canonicalize the declared source path before matching the after-stat hook. Require the hook reached, exact expected content/hash/length, partial entry count and zero fake provider creates. Original failed report/log preserved; no live provider was called."
+    }
+  ],
+  "boundaries": {
+    "whole_root_envelope": "UNKNOWN",
+    "quota_enforced": false,
+    "active_pin_changed": false,
+    "jetstream2_live": "BLOCKED_ENGINEERING_OPERATIONAL_AND_SEPARATE_USER_APPROVAL",
+    "waypoint_fifth_headroom_failure": "FAIL_UNCHANGED"
+  }
+}

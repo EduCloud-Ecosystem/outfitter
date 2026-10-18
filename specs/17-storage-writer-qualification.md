@@ -97,7 +97,9 @@ Numeric per-file limits below are current code limits, not a whole-root quota.
    ledger commits. For k planned distinct outputs, conservatively reserve
    `64 MiB + (k + 1) * (6 MiB + 512)` additional logical bytes plus exact entries
    and newly created directories; tighter measured plans may be smaller. This
-   covers only this writer family. Existing orphans and all other writers remain
+   assumes at most one outstanding output scratch across the whole plan. A failed
+   or unproven scratch release holds the plan; it cannot advance to another output
+   or retry under the same distinct-digest budget. This covers only this writer family. Existing orphans and all other writers remain
    separate occupancy/liability; k and serializer maxima need checked arithmetic.
 4. **Bound failure and retry generations.** Propose a single predeclared scratch
    incarnation per write plan and one retained failed incarnation per writer
@@ -135,8 +137,13 @@ Numeric per-file limits below are current code limits, not a whole-root quota.
    manifests, marker/lock files, directories and remaining safety writes. Unknown
    source entries remain charged at source and are not silently omitted from a
    whole-root claim. Revalidate before the first source fence. A fence followed
-   by destination failure keeps both roots protected and non-admitting; no
-   automatic replay, refund or deletion. One outstanding checkpoint is a proposed
+   by destination failure keeps both roots protected. Before destination rename,
+   source is fenced and destination remains held. After rename but before successful
+   directory sync, destination may already be active despite an error; durability
+   is uncertain and the error cannot certify both roots non-admitting. A future
+   protocol needs explicit destination admission fencing and verification, with
+   enough reserved safety work to persist that outcome. No automatic replay,
+   refund or deletion. One outstanding checkpoint is a proposed
    bound only; retained earlier checkpoints still occupy their own destinations.
 
 Safety cancellation, revocation, cleanup evidence and conservative settlement
@@ -157,8 +164,11 @@ systems or missing prerequisites are NOT RUN and cannot be a passing empty run.
 
 Required controls:
 
-- Output spill before compact-record refusal, repeated distinct orphan growth,
-  encoded-output amplification and same-digest temporary overlap.
+- Output spill before injected ledger publication failure, repeated distinct
+  orphan growth, encoded-output amplification and same-digest temporary overlap.
+  A separate lowered compact-record threshold exercises ordering only: record the
+  test threshold and production 96 KiB cap. Ordinary CLI reachability of that cap
+  remains NOT DEMONSTRATED; do not report a production-cap failure.
 - File-sync/rename/directory-sync fault boundaries with prior authority or visible
   uncertain generation distinguished; diagnostic persistence failure does not
   erase conservative accounting.
@@ -167,11 +177,15 @@ Required controls:
 - Snapshot cancellation/observer completion is not terminal copy-writer proof.
 - Actual `Watch` in a disposable process, with fake provider operations: readiness
   outside execution/ledger fencing, stale/duplicate owner behavior, blocked ledger
-  update, parent exit, retained ambiguous liability and final process termination
-  observed separately. Do not infer real Docker or host-loss acceptance.
+  update, requester exit, retained ambiguous liability and final process termination
+  observed separately. The test supervisor starts and waits for both requester
+  and detached watchdog processes. Actual CLI launcher/OS-parent handoff is NOT RUN.
+  Do not infer real Docker or host-loss acceptance.
 - Checkpoint includes only referenced outputs, preserves/excludes unknown source
   entries, can coexist with unfenced writers, and refuses incomplete referenced
-  output without granting whole-root or destination capacity credit.
+  output without granting whole-root or destination capacity credit. Contrast a
+  pre-publication cutover fault with a destination directory-sync fault after
+  rename: the latter can return error while destination admission is already active.
 - Finite candidate model controls reject wrong identity/incarnation, nonterminal
   ownership, content corruption, unowned growth, missing scratch and UNKNOWN.
   They exercise a proposed rule only and must be labeled unenforced.
