@@ -22,6 +22,8 @@ used and what it cost, and it will not spend past a budget you set.
 > the [durable native-SU journal and cleanup supervisor](docs/JETSTREAM2-NATIVE-ACCOUNTING.md)
 > now have simulated-provider and process-recovery tests. Live worker creation has
 > no CLI and remains subject to allocation and independent-host qualification.
+> The [operator decision packet](docs/JETSTREAM2-OPERATOR-DECISION.md) remains blocked;
+> its independent rescue design is an unimplemented candidate for offline review.
 
 ## Why
 
