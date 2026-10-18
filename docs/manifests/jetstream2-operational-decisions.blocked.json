@@ -41,7 +41,13 @@
     "recipe": "print(6 * 7)",
     "expected_result": "42",
     "data": "public/synthetic only",
-    "credentials_in_guest_or_metadata": false
+    "provider_credentials_or_rescue_signing_keys_in_guest_or_metadata": false,
+    "ssh_key_custody": {
+      "private_login_key": "Host A only",
+      "private_host_key": "Generated and retained in the guest only",
+      "public_login_key": "Nonsecret bootstrap and guest authorized keys",
+      "public_host_key_or_fingerprint": "Approved authenticated provider console; bound to project, server, reservation and private address on A"
+    }
   },
   "selected": {
     "allocation_id": null,

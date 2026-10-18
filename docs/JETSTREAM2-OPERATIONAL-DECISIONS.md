@@ -49,8 +49,10 @@ volume or snapshot is included.
    credentials and rescue signing keys never enter the guest, user-data,
    resource metadata or workload. No package download at boot is proposed;
    required Python, SSH and cloud-init versions must be present and qualified.
-2. **Authenticate this boot.** The guest generates a fresh host key. Before A
-   connects, the operator obtains its public fingerprint through the approved
+2. **Authenticate this boot.** The guest generates a fresh host key and retains
+   its private part only in the guest. Only the public host key or fingerprint
+   may reach the console. Before A connects, the operator obtains that public
+   fingerprint through the approved
    authenticated provider console for the exact project/server and binds it to
    the reservation and private address. Require exact host-key checking. Missing
    or conflicting evidence stops execution; do not accept an unverified first
