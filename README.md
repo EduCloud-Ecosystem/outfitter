@@ -29,6 +29,9 @@ used and what it cost, and it will not spend past a budget you set.
 > synthetic declarations with a profile; matching metadata never enables provisioning.
 The [one-attempt offline experiment](docs/JETSTREAM2-OFFLINE-EXPERIMENT.md) enforces
 that comparison in the simulated creator, with guest execution and live testing blocked.
+The supplemental [operational decision packet](docs/JETSTREAM2-OPERATIONAL-DECISIONS.md)
+proposes a private guest route and separates operator choices, engineering prerequisites
+and later live authorization; no infrastructure or credential access is approved.
 
 ## Why
 
