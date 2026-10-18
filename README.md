@@ -25,6 +25,8 @@ used and what it cost, and it will not spend past a budget you set.
 > The [operator decision packet](docs/JETSTREAM2-OPERATOR-DECISION.md) remains blocked;
 > the [offline rescue prototype](docs/JETSTREAM2-OFFLINE-RESCUE.md) exercises signed
 > cleanup handoffs in local simulations and does not qualify live operation.
+> The [offline metadata evaluator](docs/JETSTREAM2-OFFLINE-COMPATIBILITY.md) compares
+> synthetic declarations with a profile; matching metadata never enables provisioning.
 
 ## Why
 
