@@ -2,10 +2,12 @@
 
 **BLOCKED. Recommend one private CPU worker on an existing approved allocation,
 with restricted SSH execution from an existing host and independent cleanup from
-a second existing host.** Greg can select this architecture and nominate its
-operators and resources. Software and operational qualification must still be
-completed before a separate live request is executable. No credential access,
-provisioning, deployment or live testing is approved by this packet.
+a second existing host.** This is the engineering recommendation for the already
+authorized disabled/offline preparation; no separate architecture approval is
+needed. Greg must identify and authorize the operational resources, operators
+and access. Software and operational qualification must still be completed
+before a separate live request is executable. No default route, credential
+access, provisioning, deployment or live testing is enabled by this packet.
 
 Prepared for Greg Chism on October 17, 2026, against merged PR #13,
 `2ce00f4950122890a6bcb792ee29e51127ad76c2`. The
@@ -20,13 +22,15 @@ their recorded revisions; the current boundary is below.
 
 | Selection | Recommendation | Information to supply |
 | --- | --- | --- |
-| Architecture or deferral | Continue design of the private SSH route below, one `m3.tiny`, candidate `Featured-Ubuntu24`, synthetic workload only. Defer if a provider-enforced hard charge cap is mandatory | Select this route or defer; architecture approval alone permits no live operation |
 | Allocation and accountable operator | Use an existing CPU allocation with PI permission. `SOC250004` or Ben's approved allocation are candidates only | Allocation nomination, permission owner and primary operator; no secrets or presumed entitlement |
-| Existing hosts and coverage | Host A owns admission and private guest access; independent host B owns automated cleanup. Name a separate rescue operator and credential custodian | Candidate A/B hosts, approved private route, failure domains, operators and coverage. If unavailable, request a priced alternative before adding infrastructure |
+| Existing hosts and coverage | Host A owns admission and private guest access; independent host B owns automated cleanup. Name a separate rescue operator and credential custodian | Candidate A/B hosts, approved private route, failure domains, operators, coverage and permitted access. If unavailable, request a priced alternative before adding infrastructure |
 
 Exact provider UUIDs, compatibility fields and service endpoints are evidence to
 collect after authorization, not values Greg should guess. The calendar window
-and explicit residual-cost acceptance belong in a later frozen live packet.
+and explicit residual-cost acceptance belong in a later frozen live packet. New
+costs or privilege/exposure exceptions require concrete decisions if they arise;
+routine engineering preparation does not. If a provider-enforced hard charge cap
+is mandatory, the live experiment must defer.
 Ben's [issues 1–5](https://github.com/EduCloud-Ecosystem/outfitter/issues?q=is%3Aissue+assignee%3Abmarkwart)
 were still open and assigned to `bmarkwart` on October 17; assignments and issue
 acceptance remain unchanged. No Waypoint, Portage, Cairn or pilot deployment is
@@ -166,8 +170,10 @@ supplement selects no date. The future packet must choose a feasible window afte
 prerequisites pass; an expired proposal is never automatically rolled forward.
 
 Propose B starts cleanup after expiry plus the existing clock guard and runs at
-most once every 15 seconds. Preserve the **64 persisted sweep limit per scope**,
-including retained interrupted attempts. It is not 64 new sweeps after a restart.
+most once every 15 seconds. Preserve **64 total persisted sweeps per reservation
+and observer store, shared across port and server phases and all restarts**,
+including retained interrupted attempts. Neither a second phase nor a restart
+grants another 64 sweeps.
 Alert the rescue operator immediately on refusal, credential/host/API failure or
 unexpected resources, and escalate unresolved cleanup no later than five minutes
 after expiry. Capacity exhaustion requires handoff before further automated work;
@@ -242,28 +248,36 @@ passed 736 tests/subtests and Docker/recovery/consumer acceptance; none is guest
 or live-provider qualification. Deployment remains disabled and guest execution
 remains `NOT_RUN`.
 
-## Separate authorization steps
+## Operational decisions and authorization boundaries
 
-1. **Architecture selection:** choose the route, allocation candidate and proposed
-   hosts/operators above. This does not approve credential retrieval/creation,
-   provider login, account changes, resource inspection, provisioning or a run.
-2. **Credential and read-only evidence authorization:** after a concrete scope is
-   prepared, approve access to the named allocation and specified credential
-   handling. Authentication and selected GETs may then establish resource pins,
-   balance/entitlement records and quota; live preflight still cannot prove
-   capacity, guest boot or cleanup reliability. No credentials were accessed and
-   no authenticated provider calls were made for this supplement.
-3. **Operational qualification approval:** separately approve any use/configuration
-   of A/B hosts, private-network checks, credential permission tests or rehearsal
-   that exceeds read-only inspection. Creating an application credential or
-   changing a security group is a mutation, even without a worker. Any resources
-   or costs need their own bounded authorization; no implicit preparatory test.
-4. **Finite live experiment approval:** after the software prerequisites pass and
+Ordinary scoped design, code and offline review already fall under Greg's build
+authorization. Proceed with the recommended disabled/offline design when the next
+increment is coordinated; do not add an architecture re-approval gate. Keep
+resource-dependent work separate from that ordinary engineering.
+
+1. **Resources, operators and access:** Greg identifies the allocation, hosts,
+   operators and permitted access described above. Prepare the concrete scope
+   once, then use already granted access for the agreed read-only inspections
+   without repeat confirmation. Authentication and selected GETs may establish
+   resource pins, balance/entitlement records and quota; live preflight cannot
+   prove capacity, guest boot or cleanup reliability. No credential, provider or
+   host operations were performed for this supplement.
+2. **New costs or exposure, only if needed:** return a concrete proposal for a new
+   host/service, broader privilege, credential creation or resource changes that
+   exceed existing authorization. Creating a credential or changing a security
+   group is a mutation even without a worker. A qualification plan must identify
+   any such actions and any live tests, so required decisions can be made
+   together. Do not create another approval step for work already authorized,
+   and do not treat a preparatory test as implicitly approved live execution.
+3. **Finite live experiment approval:** after the software prerequisites pass and
    operational qualification is complete where possible without the worker,
    present a newly frozen manifest, exact revisions/digests, operators, absolute
    window, liability/escalation plan and remaining checks to perform during the
    one attempt. Greg explicitly approves provisioning and that live test, or
-   defers. Selecting a design, merging this PR or reaching a date cannot trigger it.
+   defers. The engineering recommendation, merging this PR or reaching a date
+   cannot trigger it.
 
-Until those decisions and gates are satisfied, this lane can wait while Waypoint
-and Portage continue. The accepted local Docker baseline remains available.
+Resource-dependent work can wait for those selections while Waypoint and Portage
+continue; useful scoped offline engineering remains authorized and its next
+increment will be coordinated separately. The accepted local Docker baseline
+remains available.

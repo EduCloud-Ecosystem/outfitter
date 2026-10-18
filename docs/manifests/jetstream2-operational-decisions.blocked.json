@@ -7,19 +7,18 @@
   "accepted_source": "2ce00f4950122890a6bcb792ee29e51127ad76c2",
   "packet": "docs/JETSTREAM2-OPERATIONAL-DECISIONS.md",
   "approvals": {
-    "architecture": false,
     "credential_access_or_creation": false,
     "authenticated_provider_inspection": false,
-    "host_or_network_qualification": false,
     "provisioning": false,
     "live_test": false,
     "additional_cost": false,
-    "deployment": false
+    "deployment": false,
+    "live_or_mutating_qualification": false
   },
   "guest_execution": "NOT_RUN",
   "live_readiness": "BLOCKED",
   "recommended_route": {
-    "status": "PROPOSED_NOT_SELECTED",
+    "status": "ENGINEERING_RECOMMENDATION_DISABLED_OFFLINE",
     "allocation": "Existing approved CPU allocation nominated by Greg with PI permission",
     "flavor_candidate": "m3.tiny",
     "image_candidate": "Featured-Ubuntu24",
@@ -131,7 +130,8 @@
     "absence_is_terminal": false,
     "receipts_allow_settlement_or_refund": false,
     "recovery": "Original ledger remains sole authority; preserve consumed attempt, held recovery and separate immutable B scopes",
-    "rollback_limit": "No global prevention of hostile administrator rollback or identical-path copied hosts"
+    "rollback_limit": "No global prevention of hostile administrator rollback or identical-path copied hosts",
+    "sweep_limit_scope": "64 TOTAL persisted sweeps per reservation/observer store, shared across port and server phases and all restarts"
   },
   "software_prerequisites": [
     "Production experiment/live launcher contract preserving exact atomic one-attempt and pre-POST enforcement; existing experiment/rescue constructors are loopback-only",
@@ -152,10 +152,9 @@
     "paginated_inventory": "refuse unless separately engineered and reviewed"
   },
   "authorization_sequence": [
-    "architecture_selection",
-    "credential_and_read_only_evidence",
-    "separate_operational_qualification",
-    "frozen_finite_provisioning_and_live_test"
+    "confirm_resources_operators_and_access",
+    "resolve_new_cost_or_exposure_if_needed",
+    "approve_frozen_finite_provisioning_and_live_test"
   ],
   "cost_classification": {
     "additional_subscription": "NONE_DEMONSTRATED_NECESSARY",
@@ -280,5 +279,43 @@
     "allocation_consumption": 0,
     "purchases": 0,
     "deployments": 0
-  }
+  },
+  "routine_offline_engineering": "Already authorized; no separate architecture re-approval; next scoped increment coordinated separately",
+  "authorization_rule": "Reuse existing grants for scoped reversible/read-only work; no repeat architecture/design approval; credential/provider/host operations not performed by this packet",
+  "document_review_history": [
+    {
+      "reviewed_head": "d1d54dd32cfd6e2ec7cdf595c4f23b78bce23ec7",
+      "reviewer": "independent_rescue_review",
+      "result": "CHANGES_REQUESTED",
+      "findings": [
+        {
+          "priority": "P3",
+          "finding": "Generic no-credentials-in-guest field incorrectly included guest SSH host identity",
+          "correction": "Name provider/rescue secrets precisely and record private login key on A, private host key in guest, public identity only via console",
+          "fixed_in": "1bcc84a784d37c86b8a6e96975482e80a6b7337a"
+        }
+      ]
+    },
+    {
+      "reviewed_head": "1bcc84a784d37c86b8a6e96975482e80a6b7337a",
+      "reviewer": "independent_rescue_review",
+      "result": "PASS_AT_THAT_HEAD",
+      "limitation": "Additional coordinating audit then requested the two corrections below; this earlier pass is not final packet acceptance"
+    },
+    {
+      "reviewed_head": "d1d54dd32cfd6e2ec7cdf595c4f23b78bce23ec7",
+      "reviewer": "coordinating_root_audit",
+      "result": "CHANGES_REQUESTED",
+      "findings": [
+        {
+          "finding": "Standalone architecture approval duplicated existing authorization for routine design/code",
+          "correction": "Adopt private SSH as engineering recommendation for disabled/offline work and reserve actual decisions for operational resources/access, new costs/exposure and live execution"
+        },
+        {
+          "finding": "Per-scope wording could imply 64 sweeps for each resource phase",
+          "correction": "64 TOTAL persisted sweeps per reservation/observer store, shared across port and server phases and all restarts"
+        }
+      ]
+    }
+  ]
 }
