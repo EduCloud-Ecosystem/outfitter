@@ -24,6 +24,10 @@ type WorkerRequest struct {
 	CeilingMilliSU int64  `json:"ceiling_milli_su"`
 }
 type WorkerRecord struct {
+	ExperimentDigest    string        `json:"experiment_digest,omitempty"`
+	EvidenceScope       string        `json:"evidence_scope,omitempty"`
+	LiveReadiness       string        `json:"live_readiness,omitempty"`
+	GuestExecution      string        `json:"guest_execution,omitempty"`
 	Rescue              *RescueRecord `json:"rescue,omitempty"`
 	ConfigHash          string        `json:"config_hash,omitempty"`
 	CreatedAt           time.Time     `json:"created_at"`
@@ -63,6 +67,20 @@ func (c *Client) CreateWorker(ctx context.Context, r WorkerRequest) (WorkerRecor
 		return record, e
 	}
 	defer release()
+	if j, ok := c.journal.(interface {
+		prepareExperiment(context.Context, WorkerRequest) (WorkerRecord, bool, bool, error)
+	}); ok {
+		prior, replay, enabled, err := j.prepareExperiment(ctx, r)
+		if err != nil {
+			return prior, err
+		}
+		if enabled && (!c.offlineRescue || c.rescueSender == nil) {
+			return prior, errors.New("offline experiment requires loopback rescue creator")
+		}
+		if replay {
+			return prior, nil
+		}
+	}
 	preflight, e := c.Preflight(ctx)
 	if e != nil {
 		return record, e
@@ -70,12 +88,18 @@ func (c *Client) CreateWorker(ctx context.Context, r WorkerRequest) (WorkerRecor
 	if !preflight.ResourceChecksPassed {
 		return record, errors.New("provider resource checks failed")
 	}
+	if e = c.rescuePoint("reservation-before"); e != nil {
+		return record, e
+	}
 	record, fresh, e := c.journal.Admit(ctx, r)
 	if e != nil {
 		return record, e
 	}
 	if !fresh {
 		return record, nil
+	}
+	if e = c.rescuePoint("reservation-after"); e != nil {
+		return record, e
 	}
 	if record.Rescue != nil && (!c.offlineRescue || c.rescueSender == nil) {
 		return record, errors.New("B-owned creation requires offline rescue ACKs")
@@ -89,6 +113,14 @@ func (c *Client) CreateWorker(ctx context.Context, r WorkerRequest) (WorkerRecor
 	checkDeadline := func() error {
 		if mutationCtx.Err() != nil || !time.Now().Before(record.Deadline) {
 			return errors.New("durable reservation expired before provider creation")
+		}
+		if j, ok := c.journal.(interface {
+			checkExperimentPOST(context.Context, WorkerRecord) error
+		}); ok {
+			return j.checkExperimentPOST(mutationCtx, record)
+		}
+		if record.ExperimentDigest != "" {
+			return errors.New("experiment enforcement unavailable")
 		}
 		return nil
 	}
@@ -139,6 +171,9 @@ func (c *Client) CreateWorker(ctx context.Context, r WorkerRequest) (WorkerRecor
 	if e = c.rescuePoint("port-post-before"); e != nil {
 		return unknown(e)
 	}
+	if e = checkDeadline(); e != nil {
+		return unknown(e)
+	}
 	_, e = c.call(mutationCtx, "POST", endpoint, map[string]any{"port": map[string]any{"name": record.Name, "network_id": c.config.NetworkID, "project_id": c.config.ProjectID, "security_groups": []string{c.config.SecurityGroupID}, "admin_state_up": true, "description": description}}, &port)
 	if pointErr := c.rescuePoint("port-post-after"); pointErr != nil {
 		return unknown(pointErr)
@@ -151,6 +186,9 @@ func (c *Client) CreateWorker(ctx context.Context, r WorkerRequest) (WorkerRecor
 	}
 	record.PortID = port.Port.ID
 	if e = c.journal.Save(ctx, record); e != nil {
+		return unknown(e)
+	}
+	if e = c.rescuePoint("port-response-saved"); e != nil {
 		return unknown(e)
 	}
 	endpoint, e = c.endpoint("compute", "/servers")
@@ -183,6 +221,9 @@ func (c *Client) CreateWorker(ctx context.Context, r WorkerRequest) (WorkerRecor
 	if e = c.rescuePoint("server-post-before"); e != nil {
 		return unknown(e)
 	}
+	if e = checkDeadline(); e != nil {
+		return unknown(e)
+	}
 	_, e = c.call(mutationCtx, "POST", endpoint, map[string]any{"server": map[string]any{"name": record.Name, "imageRef": c.config.ImageID, "flavorRef": c.config.FlavorID, "networks": []map[string]string{{"port": record.PortID}}, "metadata": map[string]string{"outfitter_owner": r.Owner, "outfitter_request": r.RequestID, "outfitter_deadline": record.Deadline.UTC().Format(time.RFC3339), "outfitter_reservation": record.ReservationID}}}, &server)
 	if pointErr := c.rescuePoint("server-post-after"); pointErr != nil {
 		return unknown(pointErr)
@@ -199,6 +240,9 @@ func (c *Client) CreateWorker(ctx context.Context, r WorkerRequest) (WorkerRecor
 	record.ServerID = server.Server.ID
 	record.Status = "provisioning"
 	if e = c.journal.Save(ctx, record); e != nil {
+		return unknown(e)
+	}
+	if e = c.rescuePoint("server-response-saved"); e != nil {
 		return unknown(e)
 	}
 	return record, nil

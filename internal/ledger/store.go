@@ -308,7 +308,11 @@ func (s *Store) Update(fn func(*Data) error) error {
 		if e != nil {
 			return e
 		}
+		experiments := nativeExperimentGuards(d)
 		if e = fn(&d); e != nil {
+			return e
+		}
+		if e = preserveNativeExperiments(experiments, d); e != nil {
 			return e
 		}
 		return s.write(d)

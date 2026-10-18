@@ -141,6 +141,9 @@ func (j *DurableJournal) decode(n ledger.NativeRecord) (WorkerRecord, error) {
 	if !r.UnresolvedLiability || r.AccountingStatus != "reserved_unsettled" || r.SettledMilliSU != nil || r.SettlementEvidence != "" {
 		return r, errors.New("adapter cannot settle native charges")
 	}
+	if r.ExperimentDigest != n.ExperimentDigest || (n.ExperimentDigest != "" && (r.Rescue == nil || r.EvidenceScope != "synthetic_offline" || r.LiveReadiness != "BLOCKED" || r.GuestExecution != "NOT_RUN")) || (n.ExperimentDigest == "" && (r.EvidenceScope != "" || r.LiveReadiness != "" || r.GuestExecution != "")) {
+		return r, errors.New("native experiment record mismatch")
+	}
 	// Settlement belongs to the envelope; it never rewrites provider evidence.
 	if e := validateRescueRecord(j.policy.Rescue, j.config, r); e != nil {
 		return r, e
@@ -169,6 +172,13 @@ func (j *DurableJournal) Admit(ctx context.Context, w WorkerRequest) (WorkerReco
 		if !provider.ValidID(w.RequestID) || w.Owner != d.Owner || w.MaxSeconds < 1 || w.MaxSeconds > 3600 || w.CeilingMilliSU < 1 || w.CeilingMilliSU > 1000000000 {
 			return errors.New("invalid native request or owner")
 		}
+		experiment, e := j.experiment(*d)
+		if e != nil {
+			return e
+		}
+		if experiment != nil && (w != experiment.Request || d.Authority.ID != experiment.AuthorityID) {
+			return errors.New("EXPERIMENT_AUTHORITY_OR_REQUEST_MISMATCH")
+		}
 		if n, ok := d.NativeRuns[w.RequestID]; ok {
 			var e error
 			r, e = j.decode(n)
@@ -177,6 +187,9 @@ func (j *DurableJournal) Admit(ctx context.Context, w WorkerRequest) (WorkerReco
 			}
 			if r.Request != w {
 				return errors.New("native request payload collision")
+			}
+			if experiment != nil && r.ReservationID != experiment.ReservationID {
+				return errors.New("EXPERIMENT_RESERVATION_MISMATCH")
 			}
 			return nil
 		}
@@ -200,6 +213,14 @@ func (j *DurableJournal) Admit(ctx context.Context, w WorkerRequest) (WorkerReco
 		}
 		now := time.Now().UTC()
 		deadline := now.Add(time.Duration(w.MaxSeconds) * time.Second)
+		if experiment != nil {
+			if d.NativeAccounts[j.accountID].Experiment.Consumed {
+				return errors.New("EXPERIMENT_ALREADY_CONSUMED")
+			}
+			if e := j.checkExperiment(*d, experiment, w, now, deadline); e != nil {
+				return e
+			}
+		}
 		if deadline.After(j.policy.ApprovalExpiresAt) {
 			return errors.New("supervisor approval expires before request deadline")
 		}
@@ -214,10 +235,21 @@ func (j *DurableJournal) Admit(ctx context.Context, w WorkerRequest) (WorkerReco
 			r.Rescue = &RescueRecord{Policy: *j.policy.Rescue}
 			b, _ = json.Marshal(r)
 		}
+		if experiment != nil {
+			a := d.NativeAccounts[j.accountID]
+			a.Experiment.Consumed = true
+			d.NativeAccounts[j.accountID] = a
+			r.ReservationID = experiment.ReservationID
+			r.ExperimentDigest = a.Experiment.SHA256
+			r.EvidenceScope = "synthetic_offline"
+			r.LiveReadiness = "BLOCKED"
+			r.GuestExecution = "NOT_RUN"
+			b, _ = json.Marshal(r)
+		}
 		if d.NativeRuns == nil {
 			d.NativeRuns = map[string]ledger.NativeRecord{}
 		}
-		d.NativeRuns[w.RequestID] = ledger.NativeRecord{RequestID: w.RequestID, AccountID: j.accountID, Owner: w.Owner, ReservationID: r.ReservationID, PayloadHash: digest(w), CreatedAt: now, Deadline: deadline, Reserved: w.CeilingMilliSU, State: b, Revision: 1}
+		d.NativeRuns[w.RequestID] = ledger.NativeRecord{ExperimentDigest: r.ExperimentDigest, RequestID: w.RequestID, AccountID: j.accountID, Owner: w.Owner, ReservationID: r.ReservationID, PayloadHash: digest(w), CreatedAt: now, Deadline: deadline, Reserved: w.CeilingMilliSU, State: b, Revision: 1}
 		fresh = true
 		return nil
 	})
