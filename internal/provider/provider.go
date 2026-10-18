@@ -17,20 +17,21 @@ import (
 )
 
 type Request struct {
-	SchemaVersion         int      `json:"schema_version"`
-	RequestID             string   `json:"request_id"`
-	ProjectID             string   `json:"project_id"`
-	Image                 string   `json:"image"`
-	Command               []string `json:"command"`
-	InputDir              string   `json:"input_dir"`
-	RecipeDir             string   `json:"recipe_dir"`
-	CPUs                  float64  `json:"cpus"`
-	MemoryMB              int      `json:"memory_mb"`
-	PIDsLimit             int      `json:"pids_limit"`
-	TimeoutSeconds        int      `json:"timeout_seconds"`
-	MaxOutputBytes        int      `json:"max_output_bytes"`
-	Isolation             string   `json:"isolation"`
-	AllowSupervisedReaper bool     `json:"allow_supervised_reaper"`
+	Consumer              *ConsumerBinding `json:"consumer_binding,omitempty"`
+	SchemaVersion         int              `json:"schema_version"`
+	RequestID             string           `json:"request_id"`
+	ProjectID             string           `json:"project_id"`
+	Image                 string           `json:"image"`
+	Command               []string         `json:"command"`
+	InputDir              string           `json:"input_dir"`
+	RecipeDir             string           `json:"recipe_dir"`
+	CPUs                  float64          `json:"cpus"`
+	MemoryMB              int              `json:"memory_mb"`
+	PIDsLimit             int              `json:"pids_limit"`
+	TimeoutSeconds        int              `json:"timeout_seconds"`
+	MaxOutputBytes        int              `json:"max_output_bytes"`
+	Isolation             string           `json:"isolation"`
+	AllowSupervisedReaper bool             `json:"allow_supervised_reaper"`
 }
 
 var identifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$`)
@@ -72,6 +73,9 @@ func (r Request) Validate() error {
 			return errors.New("mount directories must be clean absolute paths without comma or newline")
 		}
 	}
+	if e := r.validateConsumer(); e != nil {
+		return e
+	}
 	encoded, _ := json.Marshal(r)
 	if len(encoded) > 32768 {
 		return errors.New("encoded request exceeds metadata capacity")
@@ -79,6 +83,11 @@ func (r Request) Validate() error {
 	return nil
 }
 func (r Request) Hash() string {
+	// Consumer identity binds logical bytes/configuration, never temporary host paths.
+	if r.Consumer != nil {
+		r.InputDir = ""
+		r.RecipeDir = ""
+	}
 	b, _ := json.Marshal(r)
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])

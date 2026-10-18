@@ -158,7 +158,7 @@ func (s *Store) read() (Data, error) {
 	return d, nil
 }
 func validate(d Data) error {
-	if (d.Version != 1 && d.Version != 2 && d.Version != 3) || len(d.Owner) != 32 || d.Projects == nil || d.Runs == nil || len(d.Projects)+len(d.NativeAccounts) > MaxProjects || len(d.Runs)+len(d.NativeRuns) > MaxRecords {
+	if (d.Version != 1 && d.Version != 2 && d.Version != 3 && d.Version != 4) || len(d.Owner) != 32 || d.Projects == nil || d.Runs == nil || len(d.Projects)+len(d.NativeAccounts) > MaxProjects || len(d.Runs)+len(d.NativeRuns) > MaxRecords {
 		return errors.New("incomplete or over-capacity ledger")
 	}
 	if e := validateNative(d); e != nil {
@@ -177,6 +177,9 @@ func validate(d Data) error {
 	}
 	allowed := map[string]bool{"reserved": true, "creating": true, "running": true, "succeeded": true, "failed": true, "cancelled": true, "unknown": true}
 	for id, r := range d.Runs {
+		if r.Request.Consumer != nil && d.Version < 4 {
+			return errors.New("consumer binding requires authority version 4")
+		}
 		if e := r.Request.Validate(); e != nil {
 			return errors.New("invalid persisted request")
 		}

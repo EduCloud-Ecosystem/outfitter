@@ -127,7 +127,7 @@ func validateAuthority(d Data) error {
 	return nil
 }
 func RequireAdmission(d Data) error {
-	if (d.Version != 2 && d.Version != 3) || d.Authority == nil || d.Authority.Admission != "active" {
+	if (d.Version != 2 && d.Version != 3 && d.Version != 4) || d.Authority == nil || d.Authority.Admission != "active" {
 		return ErrAdmission
 	}
 	return nil
@@ -176,7 +176,7 @@ func report(d Data) RecoveryReport {
 func (s *Store) RecoveryStatus() (RecoveryReport, error) {
 	var out RecoveryReport
 	e := s.View(func(d Data) error {
-		if (d.Version != 2 && d.Version != 3) || d.Authority == nil {
+		if (d.Version != 2 && d.Version != 3 && d.Version != 4) || d.Authority == nil {
 			return errors.New("reopen legacy authority to migrate before recovery")
 		}
 		out = report(d)

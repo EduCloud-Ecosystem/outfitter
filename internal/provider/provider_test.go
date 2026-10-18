@@ -7,7 +7,7 @@ import (
 )
 
 func validRequest() Request {
-	return Request{1, "run", "project", "sha256:" + strings.Repeat("a", 64), []string{"python", "/recipe/recipe.py"}, "/input", "/recipe", 1, 256, 64, 30, 65536, "reviewed-local", true}
+	return Request{SchemaVersion: 1, RequestID: "run", ProjectID: "project", Image: "sha256:" + strings.Repeat("a", 64), Command: []string{"python", "/recipe/recipe.py"}, InputDir: "/input", RecipeDir: "/recipe", CPUs: 1, MemoryMB: 256, PIDsLimit: 64, TimeoutSeconds: 30, MaxOutputBytes: 65536, Isolation: "reviewed-local", AllowSupervisedReaper: true}
 }
 func TestAdmissionRefusesUnsafeOrUnknown(t *testing.T) {
 	tests := []struct {

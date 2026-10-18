@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-17",
+  "pr": "https://github.com/EduCloud-Ecosystem/outfitter/pull/9",
+  "initial_review_head": "7fdbe5fe18799d3d59541ae6b47a7bfb9241dee9",
+  "reviewer": "Independent fresh-context collaboration agent /root/independent_consumer_review",
+  "initial_outcome": "changes required",
+  "findings": [
+    {
+      "priority": "P2",
+      "problem": "Bare parent manifest path .. passed preflight and consumed the one attempt and 30 CPU-seconds before snapshot refusal, with zero creates.",
+      "fix": "Reject bare parent paths during request validation before reservation.",
+      "regression": "TestBareParentManifestRefusedBeforeAdmission/input and /recipe assert preflight/run refusal, byte-identical authority, zero creates and unchanged allowance."
+    }
+  ],
+  "before_fix": {
+    "result": "expected FAIL for input and recipe",
+    "log_sha256": "cf5e29ed7a78a592905f88cd4ca1e4b1fbda764bd5b86e6efd16b37ddd6ec25f"
+  },
+  "fixed_consumer_race_tests": {
+    "result": "PASS",
+    "test_and_subtest_passes": 40,
+    "log_sha256": "1521de584631771fad667048da0cf490a46cc355b5b055b0bf364b9ecb735b6d"
+  },
+  "independent_final_review_and_ci": "Recorded at exact final SHA on PR #9 before merge",
+  "boundaries": [
+    "local synthetic fixture only",
+    "no production Cairn wiring or grade publication",
+    "live Jetstream2 blocked pending separate approval",
+    "Ben assignments and sibling implementations unchanged"
+  ]
+}

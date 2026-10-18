@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/EduCloud-Ecosystem/outfitter/internal/broker"
+	"github.com/EduCloud-Ecosystem/outfitter/internal/consumer"
 	"github.com/EduCloud-Ecosystem/outfitter/internal/ledger"
 	"github.com/EduCloud-Ecosystem/outfitter/internal/provider"
 	"github.com/EduCloud-Ecosystem/outfitter/internal/provider/docker"
@@ -50,12 +51,17 @@ func execute() error {
 	if command == "jetstream2-preflight" {
 		return jetstreamPreflight(args[1:])
 	}
+	if command == "consumer-preflight" {
+		return consumerPreflight(args[1:])
+	}
 	if *state == "" {
 		return errors.New("private --state-dir is required")
 	}
 	f := flag.NewFlagSet(command, flag.ContinueOnError)
 	f.SetOutput(io.Discard)
 	project := f.String("project-id", "", "opaque project identifier")
+	consumerName := f.String("consumer", "", "supported synthetic consumer")
+	job := f.String("job-id", "", "opaque consumer job identifier")
 	budget := f.Int64("budget-cpu-seconds", 0, "finite project budget")
 	request := f.String("request", "", "request JSON file")
 	id := f.String("request-id", "", "request identifier")
@@ -134,6 +140,14 @@ func execute() error {
 		result, e = s.Usage(*project)
 	case "status":
 		result, e = s.Receipt(*id)
+	case "consumer-run":
+		var req consumer.Request
+		req, e = readConsumerRequest(*request)
+		if e == nil {
+			result, e = consumer.Run(ctx, b, req)
+		}
+	case "consumer-status":
+		result, e = consumer.Status(s, *consumerName, *project, *job)
 	case "run":
 		file, er := os.Open(*request)
 		if er != nil {
@@ -273,4 +287,33 @@ func jetstreamReap(state string, args []string) error {
 		}
 	}
 	return nil
+}
+
+func readConsumerRequest(path string) (consumer.Request, error) {
+	file, e := os.Open(path)
+	if e != nil {
+		return consumer.Request{}, errors.New("consumer request file unavailable")
+	}
+	defer file.Close()
+	return consumer.Decode(file)
+}
+func consumerPreflight(args []string) error {
+	f := flag.NewFlagSet("consumer-preflight", flag.ContinueOnError)
+	f.SetOutput(io.Discard)
+	path := f.String("request", "", "synthetic consumer request JSON")
+	if e := f.Parse(args); e != nil {
+		return e
+	}
+	if *path == "" || len(f.Args()) != 0 {
+		return errors.New("consumer-preflight requires --request FILE")
+	}
+	req, e := readConsumerRequest(*path)
+	if e != nil {
+		return e
+	}
+	result, e := consumer.Check(req)
+	if e != nil {
+		return e
+	}
+	return json.NewEncoder(os.Stdout).Encode(result)
 }
