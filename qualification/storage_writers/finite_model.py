@@ -7,11 +7,11 @@ def admit(plan, observation):
     """No release/reuse from identity, length, process exit, or absence alone."""
     if observation["owner"] != plan["owner"]:
         return False
-    if not observation["terminal"] or not observation["handles_closed"]:
+    if observation["terminal"] is not True or observation["handles_closed"] is not True:
         return False
     if observation["files"] != plan["files"]:
         return False
-    if not observation["all_owners_known"] or not observation["scratch_reusable"]:
+    if observation["all_owners_known"] is not True or observation["scratch_reusable"] is not True:
         return False
     for dimension in ("bytes", "entries"):
         terms = observation[dimension]
@@ -34,7 +34,8 @@ def exercise():
             "bytes": {"observed": 10, "owned_remaining": 5, "new": 3, "safety": 2, "limit": 20},
             "entries": {"observed": 4, "owned_remaining": 1, "new": 1, "safety": 1, "limit": 7}}
     results = []
-    assert admit(plan, base), "exact-boundary candidate should pass model"
+    if not admit(plan, base):
+        raise AssertionError("exact-boundary candidate should pass model")
     results.append({"id": "exact-boundary", "accepted_by_model": True})
     faults = {
         "wrong-authority": lambda x: x["owner"].__setitem__(0, "foreign"),
@@ -51,11 +52,18 @@ def exercise():
         "byte-peak-exceeds-limit": lambda x: x["bytes"].__setitem__("new", 4),
         "entry-peak-exceeds-limit": lambda x: x["entries"].__setitem__("new", 2),
     }
+    for field in ("terminal", "handles_closed", "all_owners_known", "scratch_reusable"):
+        for label, value in (("unknown", "UNKNOWN"), ("nonboolean", 1)):
+            faults[f"{field}-{label}"] = lambda x, key=field, bad=value: x.__setitem__(key, bad)
+    for dimension in ("bytes", "entries"):
+        for label, value in (("boolean", True), ("float", 1.0), ("nan", float("nan")), ("infinity", float("inf")), ("negative", -1)):
+            faults[f"{dimension}-{label}"] = lambda x, key=dimension, bad=value: x[key].__setitem__("new", bad)
     for name, fault in faults.items():
         candidate = deepcopy(base)
         fault(candidate)
         accepted = admit(plan, candidate)
-        assert not accepted, f"counterexample admitted: {name}"
+        if accepted:
+            raise AssertionError(f"counterexample admitted: {name}")
         results.append({"id": name, "accepted_by_model": accepted})
     return {"status": "MODEL_ONLY_NOT_ENFORCED", "cases": results,
             "production_observation_connection": "none; candidate ownership rule only"}

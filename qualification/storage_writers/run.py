@@ -171,6 +171,9 @@ def main():
             if run.returncode or failed or skipped or set(ids) != EXPECTED or len(ids) != len(EXPECTED):
                 raise RuntimeError(f"witness execution incomplete; missing={sorted(EXPECTED-set(ids))}, skipped={skipped}, failed={failed}")
             report["candidate_model"] = exercise()
+            report["optimized_model_oracle_probes"] = json.loads(command([sys.executable, "-O", str(HERE/"model_oracle_probe.py")]))
+            if report["optimized_model_oracle_probes"]["python_assertions_enabled"]:
+                raise RuntimeError("optimized oracle subprocess did not disable assertions")
             report["qualification_status"] = "PASS_COUNTEREXAMPLES_REPRODUCED"
     except Exception as exc:
         report["qualification_status"] = "FAILED_OR_NOT_RUN"

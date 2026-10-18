@@ -1,0 +1,57 @@
+{
+  "reviewed_head": "e0eff0bc74b2ed35420a98d43cab7edb13258e56",
+  "model_sha256": "cf6bc73eef8bb5ff94ffeec298daccbcce1e0acee50b5b0a2679cc2092f43575",
+  "property": "unknown or non-Boolean proof must refuse modeled admission",
+  "status": "FAIL_REPRODUCED",
+  "cases": [
+    {
+      "field": "terminal",
+      "value": "UNKNOWN",
+      "accepted_before_fix": true,
+      "required_result": false
+    },
+    {
+      "field": "terminal",
+      "value": 1,
+      "accepted_before_fix": true,
+      "required_result": false
+    },
+    {
+      "field": "handles_closed",
+      "value": "UNKNOWN",
+      "accepted_before_fix": true,
+      "required_result": false
+    },
+    {
+      "field": "handles_closed",
+      "value": 1,
+      "accepted_before_fix": true,
+      "required_result": false
+    },
+    {
+      "field": "all_owners_known",
+      "value": "UNKNOWN",
+      "accepted_before_fix": true,
+      "required_result": false
+    },
+    {
+      "field": "all_owners_known",
+      "value": 1,
+      "accepted_before_fix": true,
+      "required_result": false
+    },
+    {
+      "field": "scratch_reusable",
+      "value": "UNKNOWN",
+      "accepted_before_fix": true,
+      "required_result": false
+    },
+    {
+      "field": "scratch_reusable",
+      "value": 1,
+      "accepted_before_fix": true,
+      "required_result": false
+    }
+  ],
+  "production_affected": false
+}

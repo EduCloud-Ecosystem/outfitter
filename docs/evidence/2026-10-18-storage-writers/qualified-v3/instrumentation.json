@@ -1,0 +1,68 @@
+[
+  {
+    "file": "internal/ledger/store.go",
+    "before": "\t\"github.com/EduCloud-Ecosystem/outfitter/internal/provider\"",
+    "after": "\t\"github.com/EduCloud-Ecosystem/outfitter/internal/provider\"\n\t\"github.com/EduCloud-Ecosystem/outfitter/internal/qualification\"",
+    "occurrences": 1
+  },
+  {
+    "file": "internal/broker/broker.go",
+    "before": "\t\"github.com/EduCloud-Ecosystem/outfitter/internal/provider\"",
+    "after": "\t\"github.com/EduCloud-Ecosystem/outfitter/internal/provider\"\n\t\"github.com/EduCloud-Ecosystem/outfitter/internal/qualification\"",
+    "occurrences": 1
+  },
+  {
+    "file": "internal/ledger/store.go",
+    "before": "f.Sync()",
+    "after": "qualification.Sync(f)",
+    "occurrences": 3
+  },
+  {
+    "file": "internal/ledger/store.go",
+    "before": "dir.Sync()",
+    "after": "qualification.Sync(dir)",
+    "occurrences": 1
+  },
+  {
+    "file": "internal/ledger/store.go",
+    "before": "directory.Sync()",
+    "after": "qualification.Sync(directory)",
+    "occurrences": 1
+  },
+  {
+    "file": "internal/ledger/store.go",
+    "before": "os.Rename(",
+    "after": "qualification.Rename(",
+    "occurrences": 2
+  },
+  {
+    "file": "internal/ledger/store.go",
+    "before": "len(encoded) > maxRecordBytes",
+    "after": "len(encoded) > qualification.RecordLimit(maxRecordBytes)",
+    "occurrences": 1
+  },
+  {
+    "file": "internal/ledger/store.go",
+    "before": "\tif e = syscall.Flock(fd, syscall.LOCK_EX); e != nil {",
+    "after": "\tif e = qualification.Gate(\"ledger-before-lock\", s.Dir); e != nil { return e }\n\tif e = syscall.Flock(fd, syscall.LOCK_EX); e != nil {",
+    "occurrences": 1
+  },
+  {
+    "file": "internal/broker/broker.go",
+    "before": "\t\t\tfd, e := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW, 0)",
+    "after": "\t\t\tif e := qualification.Gate(\"snapshot-after-stat\", path); e != nil { return e }\n\t\t\tfd, e := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW, 0)",
+    "occurrences": 1
+  },
+  {
+    "file": "internal/broker/broker.go",
+    "before": "\tready := filepath.Join(b.Store.Dir, \"watch-\"+id+\".ready\")",
+    "after": "\tif e = qualification.Gate(\"watch-before-ready\", b.Store.Dir); e != nil { return e }\n\tready := filepath.Join(b.Store.Dir, \"watch-\"+id+\".ready\")",
+    "occurrences": 1
+  },
+  {
+    "file": "internal/broker/broker.go",
+    "before": "\tdefer os.Remove(ready)",
+    "after": "\tdefer os.Remove(ready)\n\tif e = qualification.Gate(\"watch-after-ready\", b.Store.Dir); e != nil { return e }",
+    "occurrences": 1
+  }
+]

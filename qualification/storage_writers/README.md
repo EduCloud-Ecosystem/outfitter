@@ -59,10 +59,14 @@ launcher's OS-parent/child handoff. The CLI's existence-only ready polling was
 source-inspected but is **NOT RUN** here. Readiness barriers deliberately widen real
 scheduling windows; they are not an assertion of normal timing.
 
-The separate finite model has one accepted boundary case and 13 rejection cases:
+The separate finite model has one accepted boundary case and 31 rejection cases:
 authority/incarnation mismatch, nonterminal owner, open handles, same-length
 corruption, extra/missing paths, unknown owners, unproven scratch reuse, UNKNOWN
-bytes/entries, and byte/entry peak excess. It operates on declared inputs only;
+bytes/entries, byte/entry peak excess, and UNKNOWN/non-Boolean values for each
+completion/ownership/scratch proof flag. Boolean, float, NaN, infinity and negative
+byte/entry operands also refuse. Two deliberate oracle mutations (always accept
+and always reject) must fail in a separate Python process under `-O`; explicit
+failures remain effective when Python assertions are disabled. It operates on declared inputs only;
 **MODEL_ONLY_NOT_ENFORCED**, with no production ownership census or admission link.
 
 ## Provenance and source comparison
