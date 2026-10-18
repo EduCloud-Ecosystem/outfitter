@@ -103,6 +103,36 @@ source hashes, review findings/fixes, test-log digest and remaining limits.
 The focused follow-up PR must also pass CI on its final head before merge,
 including the existing actual-Docker lifecycle, recovery and consumer checks.
 
+### Subsequent exact-outcome correction
+
+The coordinating chat's secondary source/evidence review of `6a984fef` found
+one additional parser defect: substring-based enum membership admitted signed
+concatenations such as `UNKNOWN|OBSERVED_ABSENT`. This did not grant accounting
+authority, but violated the receipt schema. Source revision
+`2658042f51d9148bd1c89ca59d8f1340c2347d80` replaces it with exact matching of the
+three observational outcomes and clarifies that requirement in spec 14.
+
+`TestOfflineRescueReviewSignedReceiptOutcome` signs each candidate with B's
+fixture key. Before the fix, all three concatenated-status controls failed by
+being accepted; after the fix, all 11 cases and their parent test passed with
+race detection. A first attempted post-fix run failed to build because the old
+`strings` import was unused; removing that import resolved it before the passing
+run. Independent review of `2658042` inspected the exact delta, confirmed the
+before-fix failures, reran the signed regression with race detection and returned
+**PASS**, with no further findings. Earlier source hashes and test results remain
+recorded as earlier evidence; the structured record adds the correction's source
+hashes and exact log provenance. The full uncached race suite on `2658042` then
+passed **376 tests/subtests**, including **220 offline rescue tests/subtests**,
+across all seven packages with zero failures; vet, formatting and diff checks
+also passed. Its JSONL SHA-256 is
+`5bee067d0b777c686d9fb3b2d02fea1339c007872b6a65bd0508871d93d401a2`.
+
+The earlier final-head CI run `39098127034` passed on `6a984fef` with 364 race
+tests/subtests, 27 Docker checks, 38 recovery checks and 19 synthetic consumer
+checks. That is evidence for the preceding revision. The corrected PR head must
+pass CI separately before merge. Live testing remains blocked by unresolved
+engineering and operational requirements as well as explicit user approval.
+
 ## Limits that keep the live gate closed
 
 - An absence observation is time-bounded. Unknown intent and liabilities remain
