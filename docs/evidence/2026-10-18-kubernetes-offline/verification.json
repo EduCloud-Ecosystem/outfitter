@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "recorded_at": "2026-10-19T00:55:43.150943+00:00",
+  "recorded_at": "2026-10-19T01:07:25.808982+00:00",
   "scope": "Disabled offline Kubernetes single-Pod protocol prototype; temporary synthetic state and injected fake API only.",
   "base_commit": "5446438985e31cb739f2048a2aa2176918831a7e",
   "educloud_backlog_commit": "8dd3754c971dff2b38936e1d9af2c2c81d3ecad5",
@@ -10,58 +10,59 @@
     "internal/provider/docker/docker.go": "61fb834b74944c49d7c8ff200981eae1c20c38a37cb0d40a5fa1f64267f1fe46",
     "internal/provider/kubernetes/offline.go": "c75fc5bfb38a845c5a10bc1ea71c87969bb8bf4d263d5e2f93669f78921020bb",
     "internal/provider/kubernetes/offline_test.go": "62d3934eca2a4ca9a0e1b032d895ee102f754f69e1a7c3d353985e8dafe16b91",
-    "internal/broker/broker.go": "96d4c44004938c277f25091c59aee1bc56b7e154345ae15e29c9ef590a465502",
+    "internal/broker/broker.go": "96da64e0b487975dd35179618124781e17b0da8c4ee83e7decad9340aceb052f",
     "internal/ledger/store.go": "f08c54df5216c4fcd400270ccc9a9dbd71dae4a3b0fbb276cb9145ff80d61d00",
     "internal/ledger/recovery.go": "22305e565b6fda24f064bcf2cfeb5bd94ffaac3c1b0ff3f393cf49a1ff80aed2",
-    "internal/ledger/placement.go": "1bf071396375744532b9cbf7ea9b5b96be7207bf88bb85430536fe712f137137"
+    "internal/ledger/placement.go": "1bf071396375744532b9cbf7ea9b5b96be7207bf88bb85430536fe712f137137",
+    "internal/provider/kubernetes/reap_test.go": "6fcaa5cd4cf07f4ffe98bc146000eb7763445a695ce3c1f4f78916f7e36a9e70"
   },
   "final_local_verification": {
     "status": "PASS",
     "command": "env -u OUTFITTER_DOCKER_IMAGE -u OUTFITTER_NATIVE_TEST_ROLE -u OUTFITTER_RESCUE_TEST_ROLE go test -race -p 1 -count=1 -json ./...",
     "exit_code": 0,
-    "passing_test_and_subtest_events": 811,
-    "kubernetes_passing_test_and_subtest_events": 57,
+    "passing_test_and_subtest_events": 816,
+    "kubernetes_passing_test_and_subtest_events": 62,
     "counting_note": "Go JSON pass events include parent tests and nested subtests; this is not a count of distinct scenarios.",
     "failed_test_events": 0,
     "packages": [
       {
         "package": "github.com/EduCloud-Ecosystem/outfitter/cmd/outfitter",
-        "elapsed_seconds": 1.427,
+        "elapsed_seconds": 1.407,
         "status": "PASS"
       },
       {
         "package": "github.com/EduCloud-Ecosystem/outfitter/internal/broker",
-        "elapsed_seconds": 57.846,
+        "elapsed_seconds": 58.114,
         "status": "PASS"
       },
       {
         "package": "github.com/EduCloud-Ecosystem/outfitter/internal/consumer",
-        "elapsed_seconds": 2.959,
+        "elapsed_seconds": 2.863,
         "status": "PASS"
       },
       {
         "package": "github.com/EduCloud-Ecosystem/outfitter/internal/ledger",
-        "elapsed_seconds": 10.204,
+        "elapsed_seconds": 13.228,
         "status": "PASS"
       },
       {
         "package": "github.com/EduCloud-Ecosystem/outfitter/internal/provider",
-        "elapsed_seconds": 1.354,
+        "elapsed_seconds": 1.318,
         "status": "PASS"
       },
       {
         "package": "github.com/EduCloud-Ecosystem/outfitter/internal/provider/docker",
-        "elapsed_seconds": 1.361,
+        "elapsed_seconds": 1.316,
         "status": "PASS"
       },
       {
         "package": "github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2",
-        "elapsed_seconds": 116.353,
+        "elapsed_seconds": 115.015,
         "status": "PASS"
       },
       {
         "package": "github.com/EduCloud-Ecosystem/outfitter/internal/provider/kubernetes",
-        "elapsed_seconds": 7.897,
+        "elapsed_seconds": 8.537,
         "status": "PASS"
       }
     ],
@@ -87,7 +88,9 @@
       "go.mod",
       "internal/consumer",
       "internal/provider/jetstream2"
-    ]
+    ],
+    "log": "go-tests-reviewed.jsonl",
+    "source_binding": "source_sha256 in this record"
   },
   "self_review": {
     "status": "PASS_AFTER_FIXES",
@@ -161,7 +164,8 @@
     "no charge refund or replacement attempt",
     "legacy record and native account preservation",
     "Docker backend confusion refusal",
-    "version-5 checkpoint/restore refusal"
+    "version-5 checkpoint/restore refusal",
+    "mixed-authority reaping preserves eligible owned cleanup and foreign records across backend, cluster and namespace UID boundaries"
   ],
   "raw_evidence": {
     "availability": "Retained outside the repository; hashes identify local diagnostic logs and before-fix source snapshots. These logs are not claimed to be a public downloadable bundle.",
@@ -220,6 +224,46 @@
         "file": "self-review-regressions-after.jsonl",
         "bytes": 9442,
         "sha256": "e88ccdd98f956ee4fb6e331ad663a56af8c15489b39cfae02ea916cd122b6368"
+      },
+      {
+        "file": "before-mixed-reap-fix.go.txt",
+        "bytes": 16803,
+        "sha256": "96d4c44004938c277f25091c59aee1bc56b7e154345ae15e29c9ef590a465502"
+      },
+      {
+        "file": "independent-mixed-reap-witness.go.txt",
+        "bytes": 1692,
+        "sha256": "66a6b46325ffd589321d4ea489ef1ac4619fb75778f3475406f9b3b772e2c9e2"
+      },
+      {
+        "file": "mixed-reap-before.jsonl",
+        "bytes": 7404,
+        "sha256": "3b757a83873f72e4a5fa6aa717436dc11f161338b1ad4d018b06c4e7f4d49902"
+      },
+      {
+        "file": "mixed-reap-after.jsonl",
+        "bytes": 26898,
+        "sha256": "c98737d13a42e859aefbdaa4a09ebd550a8503624705abab8cfa67d2254b9d6f"
+      },
+      {
+        "file": "go-tests-reviewed.jsonl",
+        "bytes": 1006263,
+        "sha256": "2c376bec952e316ab2ff52e1d001ba849649dd2dfdb9cd2d12c113b45c9ca305"
+      },
+      {
+        "file": "go-stderr-reviewed.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "file": "verification-before-independent-fix.json",
+        "bytes": 10860,
+        "sha256": "4b3db903c8fe354ae4d5eddf4ee50a66a2c65524946630bd1d7bc74dc9375e7d"
+      },
+      {
+        "file": "ci-verification.json",
+        "bytes": 2286,
+        "sha256": "6433ea4fd870596dd74cb0489025d1b1d1835e65c43846573c25b6144039ba41"
       }
     ]
   },
@@ -243,5 +287,106 @@
     "version-5 checkpoint and restore qualification"
   ],
   "accounting": "Existing project CPU-second reservation; full estimated_upper_bound charge on known outcomes with verified cleanup. Unknown effects retain the full reservation. No measured-usage, money, native-unit or control-plane-overhead claim.",
-  "limits": "No CLI selector or live transport exists. API methods must honor context and exact target/UID. Local transition guards do not detect privileged filesystem rollback. Earlier accepted state and allowance were not used."
+  "limits": "No CLI selector or live transport exists. API methods must honor context and exact target/UID. Local transition guards do not detect privileged filesystem rollback. Earlier accepted state and allowance were not used.",
+  "prior_local_verification": {
+    "status": "PASS",
+    "command": "env -u OUTFITTER_DOCKER_IMAGE -u OUTFITTER_NATIVE_TEST_ROLE -u OUTFITTER_RESCUE_TEST_ROLE go test -race -p 1 -count=1 -json ./...",
+    "exit_code": 0,
+    "passing_test_and_subtest_events": 811,
+    "kubernetes_passing_test_and_subtest_events": 57,
+    "counting_note": "Go JSON pass events include parent tests and nested subtests; this is not a count of distinct scenarios.",
+    "failed_test_events": 0,
+    "packages": [
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/cmd/outfitter",
+        "elapsed_seconds": 1.427,
+        "status": "PASS"
+      },
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/internal/broker",
+        "elapsed_seconds": 57.846,
+        "status": "PASS"
+      },
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/internal/consumer",
+        "elapsed_seconds": 2.959,
+        "status": "PASS"
+      },
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/internal/ledger",
+        "elapsed_seconds": 10.204,
+        "status": "PASS"
+      },
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/internal/provider",
+        "elapsed_seconds": 1.354,
+        "status": "PASS"
+      },
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/internal/provider/docker",
+        "elapsed_seconds": 1.361,
+        "status": "PASS"
+      },
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2",
+        "elapsed_seconds": 116.353,
+        "status": "PASS"
+      },
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/internal/provider/kubernetes",
+        "elapsed_seconds": 7.897,
+        "status": "PASS"
+      }
+    ],
+    "skipped_tests": [
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/internal/provider/docker",
+        "test": "TestDockerLifecycleConformance"
+      },
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/internal/provider/docker",
+        "test": "TestProviderSelfExpiryNotClaimed"
+      }
+    ],
+    "scheduling_note": "Packages scheduled sequentially to reduce host contention for existing short deadline tests. Race instrumentation and assertions unchanged.",
+    "static_checks": {
+      "go vet ./...": "PASS",
+      "gofmt cmd internal": "PASS",
+      "git diff --check": "PASS"
+    },
+    "unchanged_from_base": [
+      "cmd",
+      ".github",
+      "go.mod",
+      "internal/consumer",
+      "internal/provider/jetstream2"
+    ],
+    "source_head": "5ed6a22f51a4eaf9ddec06a92d5b11cdc8d40a3f"
+  },
+  "independent_review": {
+    "reviewed_head": "5ed6a22f51a4eaf9ddec06a92d5b11cdc8d40a3f",
+    "initial_status": "FINDING_P2",
+    "finding": "Reap collected foreign offline records and aborted on placement refusal, allowing eligible legacy cleanup to be skipped depending on map iteration order.",
+    "reviewer_witness": "One skipped legacy teardown in 20 fresh fake-only mixed authorities reported by the independent reviewer; original witness source retained.",
+    "deterministic_regression_before": "FAIL in all four scenarios: docker-with-offline, offline-with-docker, other-cluster, other-namespace-uid.",
+    "fix": "Filter reaper candidates by existing exact provider/placement validation; retain explicit foreign Cancel/Reconcile refusal.",
+    "regression_after": {
+      "status": "PASS",
+      "command": "go test -race -count=5 -json ./internal/provider/kubernetes -run TestReapMixedAuthoritySelectsOnlyExactPlacement",
+      "passing_test_and_subtest_events": 25,
+      "foreign_records_unchanged": true,
+      "full_owned_charge_retained": true
+    },
+    "re_review_status": "PENDING_COORDINATOR"
+  },
+  "prior_CI": {
+    "head": "5ed6a22f51a4eaf9ddec06a92d5b11cdc8d40a3f",
+    "status": "PASS_BUT_NOT_ACCEPTED_DUE_TO_INDEPENDENT_FINDING",
+    "url": "https://github.com/EduCloud-Ecosystem/outfitter/actions/runs/39183030745",
+    "passing_test_and_subtest_events": 811,
+    "docker_checks": 26,
+    "recovery_checks": 38,
+    "consumer_checks": 19,
+    "storage_writer_note": "Existing pinned historical source qualification passed 22 events; not Kubernetes runtime/current-source quota qualification."
+  }
 }

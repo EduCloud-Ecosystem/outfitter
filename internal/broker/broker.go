@@ -377,6 +377,11 @@ func (b *Broker) Reap() ([]provider.Receipt, error) {
 	var ids []string
 	e := b.Store.View(func(d ledger.Data) error {
 		for id, r := range d.Runs {
+			// A shared authority can contain multiple backends and exact targets.
+			// Leave foreign records untouched without starving owned cleanup.
+			if provider.CheckPlacement(b.Provider, r.Request) != nil {
+				continue
+			}
 			if r.Active() && (!time.Now().Before(r.Deadline) || !Alive(r.PID) || r.CancelRequested) {
 				ids = append(ids, id)
 			}

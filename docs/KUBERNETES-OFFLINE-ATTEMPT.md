@@ -13,6 +13,9 @@ the backend, cluster digest, namespace name/UID and attempt ID to the request.
 A durable one-time dispatch claim and immutable resource UID survive restart.
 Exact duplicate runs read retained status without API contact. Changed bindings
 are refused. A fresh request cannot reuse the same bound attempt identity.
+Reaping is scoped to the configured backend and exact cluster/namespace target;
+foreign records remain unchanged and cannot block eligible owned cleanup.
+Explicit foreign cancellation and reconciliation remain refused.
 
 Ledger version 5 identifies authorities containing offline placement records.
 Legacy request/record JSON remains unchanged when placement fields are absent.

@@ -22,6 +22,12 @@ cluster, namespace UID or attempt identity conflicts. No replacement Pod or
 controller is created. Existing placement records, identity, claimed dispatch,
 assigned Pod UID and charges cannot be removed, rebound or reduced by updates.
 
+Reaping selects only records belonging to the configured provider and exact
+placement target. A foreign backend, cluster or namespace binding remains
+unchanged and cannot prevent cleanup of eligible owned records in a mixed
+authority. Explicit per-record cancellation/reconciliation still refuses foreign
+placement rather than handing it to another provider.
+
 ## Offline API contract
 
 The injected API models exactly one named Pod, one ordinary container,
