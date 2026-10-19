@@ -21,6 +21,7 @@ type receiptFake struct {
 	createError, runError, cleanupError bool
 	exitCode                            int
 	creates                             int
+	onProvision, onRun                  func()
 }
 
 func (*receiptFake) Name() string { return "docker" }
@@ -32,12 +33,18 @@ func (*receiptFake) Estimate(w provider.Request) (int64, error) {
 }
 func (p *receiptFake) Provision(context.Context, provider.Request, provider.Reservation) error {
 	p.creates++
+	if p.onProvision != nil {
+		p.onProvision()
+	}
 	if p.createError {
 		return errors.New("synthetic ambiguous create")
 	}
 	return nil
 }
 func (p *receiptFake) Run(_ context.Context, _ provider.Record, out, errout io.Writer) (int, error) {
+	if p.onRun != nil {
+		p.onRun()
+	}
 	_, _ = io.WriteString(out, "SOURCE_DATA_MARKER")
 	_, _ = io.WriteString(errout, "SOURCE_DIAGNOSTIC_MARKER")
 	if p.runError {
@@ -189,6 +196,38 @@ func TestExistingConsumerReceiptAndDuplicateRemainOneAttempt(t *testing.T) {
 		if e != nil || result.Receipts.Measurement.Execution.Reused == nil || *result.Receipts.Measurement.Execution.Reused != (i == 1) || p.creates != 1 {
 			t.Fatal("consumer replay semantics changed", e)
 		}
+	}
+}
+
+func TestRealCreatingRunningAndContextCancellationRemainAccepted(t *testing.T) {
+	b, w, p := fixture(t, 30)
+	observed := []string{}
+	check := func(want string) func() {
+		return func() {
+			r, e := b.Store.Receipt(w.RequestID)
+			if e != nil || r.Status != want {
+				t.Fatalf("active receipt: %v %s", e, r.Status)
+			}
+			if _, e := invoke(t, projectRequest(t, r)); e != nil {
+				t.Fatalf("legitimate %s refused: %v", want, e)
+			}
+			observed = append(observed, want)
+		}
+	}
+	p.onProvision, p.onRun = check("creating"), check("running")
+	if _, e := b.Run(context.Background(), w); e != nil || len(observed) != 2 {
+		t.Fatal("active observations missing", e, observed)
+	}
+	b, w, _ = fixture(t, 30)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r, e := b.Run(ctx, w)
+	if e != nil || r.Status != "cancelled" || r.CancelRequested || r.ExecutionStarted {
+		t.Fatal("context cancellation fixture changed", r, e)
+	}
+	result, e := invoke(t, projectRequest(t, r))
+	if e != nil || result.Receipts.Measurement.Execution.CancelRequested || result.Receipts.Measurement.Execution.Status != "cancelled" {
+		t.Fatal("cancellation mislabeled as user request", e)
 	}
 }
 
