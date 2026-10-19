@@ -158,8 +158,11 @@ func (s *Store) read() (Data, error) {
 	return d, nil
 }
 func validate(d Data) error {
-	if (d.Version != 1 && d.Version != 2 && d.Version != 3 && d.Version != 4) || len(d.Owner) != 32 || d.Projects == nil || d.Runs == nil || len(d.Projects)+len(d.NativeAccounts) > MaxProjects || len(d.Runs)+len(d.NativeRuns) > MaxRecords {
+	if (d.Version != 1 && d.Version != 2 && d.Version != 3 && d.Version != 4 && d.Version != 5) || len(d.Owner) != 32 || d.Projects == nil || d.Runs == nil || len(d.Projects)+len(d.NativeAccounts) > MaxProjects || len(d.Runs)+len(d.NativeRuns) > MaxRecords {
 		return errors.New("incomplete or over-capacity ledger")
+	}
+	if e := validatePlacements(d); e != nil {
+		return e
 	}
 	if e := validateNative(d); e != nil {
 		return e
@@ -281,10 +284,14 @@ func (s *Store) Update(fn func(*Data) error) error {
 			return e
 		}
 		experiments := nativeExperimentGuards(d)
+		placements := placementGuards(d)
 		if e = fn(&d); e != nil {
 			return e
 		}
 		if e = preserveNativeExperiments(experiments, d); e != nil {
+			return e
+		}
+		if e = preservePlacements(placements, d); e != nil {
 			return e
 		}
 		return s.write(d)

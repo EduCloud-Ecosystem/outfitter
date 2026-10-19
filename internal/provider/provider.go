@@ -17,6 +17,7 @@ import (
 )
 
 type Request struct {
+	Placement             *Placement       `json:"placement,omitempty"`
 	Consumer              *ConsumerBinding `json:"consumer_binding,omitempty"`
 	SchemaVersion         int              `json:"schema_version"`
 	RequestID             string           `json:"request_id"`
@@ -40,6 +41,14 @@ var imageDigest = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[a-f0
 
 func ValidID(s string) bool { return identifier.MatchString(s) }
 func (r Request) Validate() error {
+	if r.Placement != nil {
+		if e := r.Placement.Validate(); e != nil {
+			return e
+		}
+		if r.Consumer != nil {
+			return errors.New("consumer cannot select an offline placement")
+		}
+	}
 	if r.SchemaVersion != 1 || !ValidID(r.RequestID) || !ValidID(r.ProjectID) {
 		return errors.New("invalid schema or opaque identifier")
 	}
@@ -125,8 +134,9 @@ type Receipt struct {
 	TeardownRisk        string     `json:"teardown_risk"`
 }
 type Record struct {
-	OutputSHA256 string `json:"output_sha256,omitempty"`
-	OutputBytes  int64  `json:"output_bytes,omitempty"`
+	PlacementState *PlacementState `json:"placement_state,omitempty"`
+	OutputSHA256   string          `json:"output_sha256,omitempty"`
+	OutputBytes    int64           `json:"output_bytes,omitempty"`
 	Receipt
 	Request         Request `json:"request"`
 	PayloadHash     string  `json:"payload_hash"`
