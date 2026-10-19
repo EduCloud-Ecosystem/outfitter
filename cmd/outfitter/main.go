@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/EduCloud-Ecosystem/outfitter/internal/assessment"
 	"github.com/EduCloud-Ecosystem/outfitter/internal/broker"
 	"github.com/EduCloud-Ecosystem/outfitter/internal/consumer"
 	"github.com/EduCloud-Ecosystem/outfitter/internal/ledger"
@@ -45,6 +46,12 @@ func execute() error {
 		return errors.New("usage: outfitter --state-dir PRIVATE_PATH COMMAND")
 	}
 	command := args[0]
+	if command == "assessment-receipts" {
+		if *state != "" || len(args) != 1 {
+			return errors.New("INVALID_ASSESSMENT_ARGUMENTS")
+		}
+		return assessment.Serve(os.Stdin, os.Stdout)
+	}
 	if command == "jetstream2-reap" {
 		return jetstreamReap(*state, args[1:])
 	}
