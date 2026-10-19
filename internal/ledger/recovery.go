@@ -127,7 +127,7 @@ func validateAuthority(d Data) error {
 	return nil
 }
 func RequireAdmission(d Data) error {
-	if (d.Version != 2 && d.Version != 3 && d.Version != 4) || d.Authority == nil || d.Authority.Admission != "active" {
+	if (d.Version != 2 && d.Version != 3 && d.Version != 4 && d.Version != 5) || d.Authority == nil || d.Authority.Admission != "active" {
 		return ErrAdmission
 	}
 	return nil
@@ -334,6 +334,9 @@ func (s *Store) Checkpoint(output string) (RecoveryReport, error) {
 		if e = RequireAdmission(d); e != nil {
 			return e
 		}
+		if d.Version == 5 {
+			return errors.New("offline Kubernetes checkpoint/restore is not qualified")
+		}
 		dir, e := exclusiveDirectory(output)
 		if e != nil {
 			return e
@@ -420,6 +423,9 @@ func loadCheckpoint(dir, digest string) (checkpoint, error) {
 	}
 	if e = validate(d); e != nil {
 		return c, e
+	}
+	if d.Version == 5 {
+		return c, errors.New("offline Kubernetes checkpoint/restore is not qualified")
 	}
 	if e = RequireAdmission(d); e != nil {
 		return c, e

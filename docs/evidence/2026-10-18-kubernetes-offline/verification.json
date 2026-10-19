@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-10-19T00:55:43.150943+00:00",
+  "scope": "Disabled offline Kubernetes single-Pod protocol prototype; temporary synthetic state and injected fake API only.",
+  "base_commit": "5446438985e31cb739f2048a2aa2176918831a7e",
+  "educloud_backlog_commit": "8dd3754c971dff2b38936e1d9af2c2c81d3ecad5",
+  "source_sha256": {
+    "internal/provider/provider.go": "aa00d8a1690d99b42935696186c0e9926a61d0658f4ea6af70beb79b6c5ce807",
+    "internal/provider/placement.go": "544968f20c0a59bcc1629182834f194df6aec0450ac7cadd01e1cbefa62fad96",
+    "internal/provider/docker/docker.go": "61fb834b74944c49d7c8ff200981eae1c20c38a37cb0d40a5fa1f64267f1fe46",
+    "internal/provider/kubernetes/offline.go": "c75fc5bfb38a845c5a10bc1ea71c87969bb8bf4d263d5e2f93669f78921020bb",
+    "internal/provider/kubernetes/offline_test.go": "62d3934eca2a4ca9a0e1b032d895ee102f754f69e1a7c3d353985e8dafe16b91",
+    "internal/broker/broker.go": "96d4c44004938c277f25091c59aee1bc56b7e154345ae15e29c9ef590a465502",
+    "internal/ledger/store.go": "f08c54df5216c4fcd400270ccc9a9dbd71dae4a3b0fbb276cb9145ff80d61d00",
+    "internal/ledger/recovery.go": "22305e565b6fda24f064bcf2cfeb5bd94ffaac3c1b0ff3f393cf49a1ff80aed2",
+    "internal/ledger/placement.go": "1bf071396375744532b9cbf7ea9b5b96be7207bf88bb85430536fe712f137137"
+  },
+  "final_local_verification": {
+    "status": "PASS",
+    "command": "env -u OUTFITTER_DOCKER_IMAGE -u OUTFITTER_NATIVE_TEST_ROLE -u OUTFITTER_RESCUE_TEST_ROLE go test -race -p 1 -count=1 -json ./...",
+    "exit_code": 0,
+    "passing_test_and_subtest_events": 811,
+    "kubernetes_passing_test_and_subtest_events": 57,
+    "counting_note": "Go JSON pass events include parent tests and nested subtests; this is not a count of distinct scenarios.",
+    "failed_test_events": 0,
+    "packages": [
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/cmd/outfitter",
+        "elapsed_seconds": 1.427,
+        "status": "PASS"
+      },
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/internal/broker",
+        "elapsed_seconds": 57.846,
+        "status": "PASS"
+      },
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/internal/consumer",
+        "elapsed_seconds": 2.959,
+        "status": "PASS"
+      },
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/internal/ledger",
+        "elapsed_seconds": 10.204,
+        "status": "PASS"
+      },
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/internal/provider",
+        "elapsed_seconds": 1.354,
+        "status": "PASS"
+      },
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/internal/provider/docker",
+        "elapsed_seconds": 1.361,
+        "status": "PASS"
+      },
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/internal/provider/jetstream2",
+        "elapsed_seconds": 116.353,
+        "status": "PASS"
+      },
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/internal/provider/kubernetes",
+        "elapsed_seconds": 7.897,
+        "status": "PASS"
+      }
+    ],
+    "skipped_tests": [
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/internal/provider/docker",
+        "test": "TestDockerLifecycleConformance"
+      },
+      {
+        "package": "github.com/EduCloud-Ecosystem/outfitter/internal/provider/docker",
+        "test": "TestProviderSelfExpiryNotClaimed"
+      }
+    ],
+    "scheduling_note": "Packages scheduled sequentially to reduce host contention for existing short deadline tests. Race instrumentation and assertions unchanged.",
+    "static_checks": {
+      "go vet ./...": "PASS",
+      "gofmt cmd internal": "PASS",
+      "git diff --check": "PASS"
+    },
+    "unchanged_from_base": [
+      "cmd",
+      ".github",
+      "go.mod",
+      "internal/consumer",
+      "internal/provider/jetstream2"
+    ]
+  },
+  "self_review": {
+    "status": "PASS_AFTER_FIXES",
+    "independent": false,
+    "findings": [
+      {
+        "finding": "A losing concurrent direct Provision call could report no effect after another call had durably claimed dispatch.",
+        "before_status": "FAIL_REPRODUCED",
+        "before_log": "concurrent-claim-before.jsonl",
+        "fix": "Reload the durable claim on refusal; the broker also checks the fresh claim before accepting ErrNotDispatched. API create errors cannot propagate that sentinel after the claim.",
+        "regressions": [
+          "TestConcurrentDirectClaimCannotDenyAnExistingEffect",
+          "TestAPICannotReturnNoEffectAfterDurableDispatch"
+        ],
+        "after_status": "PASS",
+        "after_logs": [
+          "concurrent-claim-after.jsonl",
+          "self-review-regressions-after.jsonl",
+          "go-tests-qualified.jsonl"
+        ]
+      },
+      {
+        "finding": "Separate equal-deadline timers could make a known expiration appear unknown to the broker, retaining liability despite verified cleanup.",
+        "before_status": "FAIL_REPRODUCED",
+        "before_log": "go-tests-final.jsonl",
+        "fix": "Reuse an equal or earlier caller context deadline instead of creating a competing timer.",
+        "regressions": [
+          "TestExecutionDeadlineCancelsWaitWithoutNewAttempt"
+        ],
+        "after_status": "PASS",
+        "after_logs": [
+          "self-review-regressions-after.jsonl",
+          "go-tests-qualified.jsonl"
+        ]
+      }
+    ],
+    "repeated_regressions": {
+      "status": "PASS",
+      "command": "go test -race -count=3 -json ./internal/provider/kubernetes -run 'TestExecutionDeadlineCancelsWaitWithoutNewAttempt|TestConcurrentDirectClaimCannotDenyAnExistingEffect|TestAPICannotReturnNoEffectAfterDurableDispatch'",
+      "passing_executions": 9
+    },
+    "initial_full_run": {
+      "status": "FAIL",
+      "log": "go-tests.jsonl",
+      "affected_tests": [
+        "TestOfflineExperimentFinalPOSTAndAdmissionRechecks/server-post-before",
+        "TestOfflineExperimentFinalPOSTAndAdmissionRechecks/port-post-before"
+      ],
+      "observation": "Unchanged existing native tests returned the conservative time/lifetime mismatch after their four-second request window elapsed, rather than the expected metadata mismatch. These timing-sensitive failures were not independently reproduced against the base. Both passed unchanged in the subsequent full parallel run and final sequential run."
+    },
+    "second_full_run": {
+      "status": "FAIL",
+      "log": "go-tests-final.jsonl",
+      "native_package_status": "PASS",
+      "only_failing_leaf_test": "TestExecutionDeadlineCancelsWaitWithoutNewAttempt",
+      "note": "The filename records an attempted final run, not acceptance; it remains a failed control."
+    }
+  },
+  "coverage": [
+    "reserve before effect",
+    "durable backend, cluster, namespace UID and attempt identity",
+    "duplicates and concurrent claims",
+    "changed identities refused without effect",
+    "cancellation and expiry before dispatch",
+    "ambiguous creation and late owned appearance",
+    "same-state restart without create replay",
+    "foreign UID and UID replacement race refusal",
+    "bounded combined output",
+    "API/node/cleanup failure retains full liability",
+    "object absence requires separate UID-bound termination evidence",
+    "no charge refund or replacement attempt",
+    "legacy record and native account preservation",
+    "Docker backend confusion refusal",
+    "version-5 checkpoint/restore refusal"
+  ],
+  "raw_evidence": {
+    "availability": "Retained outside the repository; hashes identify local diagnostic logs and before-fix source snapshots. These logs are not claimed to be a public downloadable bundle.",
+    "files": [
+      {
+        "file": "before-concurrent-claim-fix.go.txt",
+        "bytes": 11212,
+        "sha256": "016c6a532962c8b698bd05b6c3e39d0f956528dd85d1e25279ef405ff9b3d452"
+      },
+      {
+        "file": "before-deadline-context-fix.go.txt",
+        "bytes": 11483,
+        "sha256": "2af11342be20335433de5758a84c009ed236f082a6aa8cb3a6c7c6cf34cbc98b"
+      },
+      {
+        "file": "concurrent-claim-after.jsonl",
+        "bytes": 1683,
+        "sha256": "395597634698a2d906919fd6d460796e711d66cc728e22059229aa57e90988d1"
+      },
+      {
+        "file": "concurrent-claim-before.jsonl",
+        "bytes": 1991,
+        "sha256": "dfdcd1d47c05f11db718c170dccbe7b53b69f088f45ef4a65f5dffd6d5973523"
+      },
+      {
+        "file": "go-stderr-final.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "file": "go-stderr-qualified.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "file": "go-stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "file": "go-tests-final.jsonl",
+        "bytes": 1001713,
+        "sha256": "2ceca51a03a26f655e19b5a7bcd9d76696c304cd890c2f0822e3857f93b37731"
+      },
+      {
+        "file": "go-tests-qualified.jsonl",
+        "bytes": 1001006,
+        "sha256": "836274ff6b5bbd8a4800be1756ebf8922cd47e076bc6ce5c79bd5032b5541d18"
+      },
+      {
+        "file": "go-tests.jsonl",
+        "bytes": 999870,
+        "sha256": "49d104f9687d8d81567eb661d13c5c43fd4e780a093391c0b6e6a720fb8927af"
+      },
+      {
+        "file": "self-review-regressions-after.jsonl",
+        "bytes": 9442,
+        "sha256": "e88ccdd98f956ee4fb6e331ad663a56af8c15489b39cfae02ea916cd122b6368"
+      }
+    ]
+  },
+  "gates_at_publication": {
+    "independent_review": "PENDING_COORDINATOR",
+    "final_head_CI": "PENDING",
+    "merge": "HELD_FOR_COORDINATOR",
+    "live_Jetstream2": "BLOCKED_PENDING_GREG_APPROVAL",
+    "live_Kubernetes_adoption": "DEFER"
+  },
+  "not_run": [
+    "live Kubernetes client, credentials or Pod workload",
+    "local Docker workloads or host engine operations",
+    "live Jetstream2, allocation use or inference",
+    "real student or protected data",
+    "runtime CPU, memory, PID, storage and network enforcement",
+    "live artifact transfer and persistent state consistency",
+    "independent live termination evidence and cleanup host",
+    "two-project Python/R Kubernetes equivalence",
+    "capacity qualification or quota change",
+    "version-5 checkpoint and restore qualification"
+  ],
+  "accounting": "Existing project CPU-second reservation; full estimated_upper_bound charge on known outcomes with verified cleanup. Unknown effects retain the full reservation. No measured-usage, money, native-unit or control-plane-overhead claim.",
+  "limits": "No CLI selector or live transport exists. API methods must honor context and exact target/UID. Local transition guards do not detect privileged filesystem rollback. Earlier accepted state and allowance were not used."
+}

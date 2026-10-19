@@ -24,6 +24,9 @@ func (a *Adapter) Capabilities() provider.Capabilities {
 	return provider.Capabilities{Isolation: []string{"reviewed-local"}}
 }
 func (a *Adapter) Estimate(r provider.Request) (int64, error) {
+	if e := provider.CheckPlacement(a, r); e != nil {
+		return 0, e
+	}
 	if e := r.Validate(); e != nil {
 		return 0, e
 	}
@@ -49,6 +52,9 @@ func truncate(s string, n int) string {
 	return strings.TrimSpace(s)
 }
 func (a *Adapter) Provision(ctx context.Context, r provider.Request, v provider.Reservation) error {
+	if e := provider.CheckPlacement(a, r); e != nil {
+		return e
+	}
 	if e := r.Validate(); e != nil {
 		return e
 	}
@@ -75,6 +81,9 @@ func (a *Adapter) Provision(ctx context.Context, r provider.Request, v provider.
 	return e
 }
 func (a *Adapter) Run(ctx context.Context, r provider.Record, out, errout io.Writer) (int, error) {
+	if e := provider.CheckPlacement(a, r.Request); e != nil {
+		return -1, e
+	}
 	cmd := exec.CommandContext(ctx, a.Binary, "start", "--attach", r.Name)
 	cmd.Stdout = out
 	cmd.Stderr = errout
@@ -99,6 +108,9 @@ func (a *Adapter) Run(ctx context.Context, r provider.Record, out, errout io.Wri
 }
 func (a *Adapter) Status(ctx context.Context, r provider.Record) (provider.State, error) {
 	var result provider.State
+	if e := provider.CheckPlacement(a, r.Request); e != nil {
+		return result, e
+	}
 	// Enumerating names distinguishes a successful absence query from daemon errors.
 	b, e := a.command(ctx, "container", "ls", "--all", "--filter", "name=^/"+r.Name+"$", "--format", "{{.Names}}")
 	if e != nil {

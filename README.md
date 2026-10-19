@@ -33,6 +33,12 @@ The supplemental [operational decision packet](docs/JETSTREAM2-OPERATIONAL-DECIS
 proposes a private guest route and separates operator choices, engineering prerequisites
 and later live authorization; no infrastructure or credential access is approved.
 
+The [disabled Kubernetes attempt prototype](docs/KUBERNETES-OFFLINE-ATTEMPT.md)
+uses temporary synthetic state and an injected fake API to exercise durable
+target identity, one-Pod admission, conservative accounting and owned cleanup.
+It has no live client, credential reader or CLI selection. Docker remains the
+current development/acceptance backend; Kubernetes runtime qualification is open.
+
 ## Why
 
 EduCloud replaces GitHub Classroom without locking educators to one vendor. The

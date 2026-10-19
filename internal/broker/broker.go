@@ -32,6 +32,9 @@ func New(s *ledger.Store, p provider.Provisioner) *Broker { return &Broker{Store
 func (b *Broker) Reserve(w provider.Request) (provider.Record, bool, error) {
 	var r provider.Record
 	fresh := false
+	if e := provider.CheckPlacement(b.Provider, w); e != nil {
+		return r, false, e
+	}
 	if w.Consumer != nil && b.Provider.Name() != "docker" {
 		return r, false, errors.New("consumer supports only the local Docker profile")
 	}
@@ -92,6 +95,13 @@ func (b *Broker) Reserve(w provider.Request) (provider.Record, bool, error) {
 		if w.Consumer != nil && d.Version < 4 {
 			d.Version = 4
 		}
+		if w.Placement != nil {
+			if _, collision := d.NativeRuns[w.RequestID]; collision {
+				return errors.New("offline placement collides with a native request")
+			}
+			d.Version = 5
+			r.PlacementState = &provider.PlacementState{}
+		}
 		d.Runs[w.RequestID] = r
 		fresh = true
 		return nil
@@ -105,6 +115,9 @@ func (b *Broker) change(id string, fn func(*provider.Record)) (provider.Record, 
 		r, ok = d.Runs[id]
 		if !ok {
 			return errors.New("unknown request")
+		}
+		if e := provider.CheckPlacement(b.Provider, r.Request); e != nil {
+			return e
 		}
 		fn(&r)
 		d.Runs[id] = r
@@ -183,10 +196,16 @@ func (b *Broker) executeReserved(ctx context.Context, w provider.Request, r prov
 	defer cancel()
 	v := provider.Reservation{ID: r.RequestID, Amount: r.Compute.Reserved, Deadline: r.Deadline, Owner: r.Owner, Name: r.Name}
 	e = b.Provider.Provision(runctx, work, v)
+	definiteRefusal := false
 	r, saveErr := b.change(w.RequestID, func(x *provider.Record) {
 		x.CreateFinished = true
 		if e != nil {
-			x.CreateAmbiguous = true
+			// A returned error cannot deny a durable claim (including a racing
+			// invocation). Only a still-unclaimed offline placement is definite.
+			definiteRefusal = errors.Is(e, provider.ErrNotDispatched) && x.PlacementState != nil && !x.PlacementState.DispatchClaimed
+			if !definiteRefusal {
+				x.CreateAmbiguous = true
+			}
 		}
 	})
 	if saveErr != nil {
@@ -194,6 +213,9 @@ func (b *Broker) executeReserved(ctx context.Context, w provider.Request, r prov
 		return r.Receipt, saveErr
 	}
 	if e != nil {
+		if definiteRefusal {
+			return b.finish(w.RequestID, "failed", "provider refused before dispatch", nil, "", "", false)
+		}
 		return b.finish(w.RequestID, "unknown", "provider creation failed or response ambiguous", nil, "", "", true)
 	}
 	if r.CancelRequested || runctx.Err() != nil {
@@ -231,6 +253,9 @@ func (b *Broker) executeReserved(ctx context.Context, w provider.Request, r prov
 func (b *Broker) finish(id, status, problem string, exit *int, out, errout string, uncertain bool) (provider.Receipt, error) {
 	r, e := b.Store.Record(id)
 	if e != nil {
+		return r.Receipt, e
+	}
+	if e := provider.CheckPlacement(b.Provider, r.Request); e != nil {
 		return r.Receipt, e
 	}
 	if r.CleanupVerified && !r.UnresolvedLiability {
@@ -311,6 +336,9 @@ func (b *Broker) Reconcile(id string) (provider.Receipt, error) {
 	if e != nil {
 		return r.Receipt, e
 	}
+	if e := provider.CheckPlacement(b.Provider, r.Request); e != nil {
+		return r.Receipt, e
+	}
 	if r.CleanupVerified && !r.UnresolvedLiability {
 		return b.Store.Receipt(id)
 	}
@@ -371,6 +399,9 @@ func (b *Broker) Reap() ([]provider.Receipt, error) {
 func (b *Broker) Watch(ctx context.Context, id string) error {
 	r, e := b.Store.Record(id)
 	if e != nil {
+		return e
+	}
+	if e := provider.CheckPlacement(b.Provider, r.Request); e != nil {
 		return e
 	}
 	ready := filepath.Join(b.Store.Dir, "watch-"+id+".ready")
