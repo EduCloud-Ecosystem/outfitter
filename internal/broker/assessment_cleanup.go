@@ -103,18 +103,31 @@ func (b *Broker) assessmentFinalize(ctx context.Context, c x.Control) error {
 		return e
 	}
 	if a.State != "held" && a.State != "terminal" {
-		_, e = b.assessmentChangeAttempt(c.Binding, *c.Slot, x.AttemptFinish, func(v *x.AssessmentAttempt) error { v.State = "held"; return nil })
+		a, e = b.assessmentChangeAttempt(c.Binding, *c.Slot, x.AttemptFinish, func(v *x.AssessmentAttempt) error {
+			if v.State == "held" || v.State == "terminal" {
+				return nil
+			}
+			v.State = "held"
+			return nil
+		})
 		if e != nil {
 			return e
 		}
 	}
-	_, a, e = b.assessmentAttempt(c.Binding, *c.Slot)
-	if e != nil {
-		return e
-	}
+	// Successful mutation ACKs plan the next branch only. Each later mutation
+	// rechecks its actual current record; the final clearance read stays fresh.
 	if a.EffectsClosed() && a.AccountingUnresolved {
-		_, e = b.assessmentChangeAttempt(c.Binding, *c.Slot, x.AttemptSettle, func(v *x.AssessmentAttempt) error {
-			if !v.EffectsClosed() {
+		a, e = b.assessmentChangeAttempt(c.Binding, *c.Slot, x.AttemptSettle, func(v *x.AssessmentAttempt) error {
+			if !v.EffectsClosed() || v.State != "held" && v.State != "terminal" {
+				return x.ErrHeld
+			}
+			if !v.AccountingUnresolved {
+				if !v.ComputeCleanupObserved || v.Compute.ChargedCPUSeconds != v.Compute.ReservedCPUSeconds || v.Compute.Provenance != "estimated_upper_bound" {
+					return x.ErrHeld
+				}
+				return nil
+			}
+			if v.ComputeCleanupObserved || v.Compute.ChargedCPUSeconds != 0 || v.Compute.Provenance != "reserved" {
 				return x.ErrHeld
 			}
 			v.ComputeCleanupObserved = true
@@ -127,12 +140,14 @@ func (b *Broker) assessmentFinalize(ctx context.Context, c x.Control) error {
 			return e
 		}
 	}
-	_, a, e = b.assessmentAttempt(c.Binding, *c.Slot)
-	if e != nil {
-		return e
-	}
 	if a.EffectsClosed() && a.OwnershipCloseConfirmed && !a.OwnershipCloseUncertain && !a.AccountingUnresolved && a.State != "terminal" {
 		_, e = b.assessmentChangeAttempt(c.Binding, *c.Slot, x.AttemptFinish, func(v *x.AssessmentAttempt) error {
+			if v.State == "terminal" {
+				return nil
+			}
+			if !v.EffectsClosed() || !v.OwnershipCloseConfirmed || v.OwnershipCloseUncertain || v.AccountingUnresolved || !v.ComputeCleanupObserved || v.State != "held" && v.State != "finishing" {
+				return x.ErrHeld
+			}
 			v.State = "terminal"
 			if v.DenyLatched {
 				if v.FailureCode == "cancelled" {
