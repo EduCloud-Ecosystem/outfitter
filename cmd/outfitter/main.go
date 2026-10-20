@@ -25,16 +25,20 @@ import (
 )
 
 var errReportedPreflight = errors.New("preflight resource checks failed")
+var errReportedOwned = errors.New("owned-data reply already emitted")
 
 func main() {
 	if e := execute(); e != nil {
-		if !errors.Is(e, errReportedPreflight) {
+		if !errors.Is(e, errReportedPreflight) && !errors.Is(e, errReportedOwned) {
 			json.NewEncoder(os.Stdout).Encode(map[string]string{"error": e.Error()})
 		}
 		os.Exit(2)
 	}
 }
 func execute() error {
+	if isOwnedCommand(os.Args[1:]) {
+		return executeOwnedCommand(os.Args[1:], os.Stdin, os.Stdout)
+	}
 	root := flag.NewFlagSet("outfitter", flag.ContinueOnError)
 	root.SetOutput(io.Discard)
 	state := root.String("state-dir", "", "private local ledger directory")
@@ -46,6 +50,41 @@ func execute() error {
 		return errors.New("usage: outfitter --state-dir PRIVATE_PATH COMMAND")
 	}
 	command := args[0]
+	// Refuse the assessment-only authority before request/config reads or any
+	// provider construction, including the early Jetstream2 command branches.
+	if *state != "" {
+		if _, e := os.Lstat(filepath.Join(*state, "ledger.json")); e == nil {
+			version, e := ledger.ReadOnlyVersion(*state)
+			if e != nil {
+				return e
+			}
+			if version == 6 {
+				s, e := ledger.Open(*state, false)
+				if e != nil {
+					return e
+				}
+				b := broker.New(s, nil)
+				switch command {
+				case "reap":
+					if len(args) != 1 {
+						return ledger.ErrOwnedDataOnly
+					}
+					result, e := b.OwnedReap()
+					if e != nil {
+						return e
+					}
+					return json.NewEncoder(os.Stdout).Encode(result)
+				case "watch":
+					if len(args) != 3 || args[1] != "--request-id" {
+						return ledger.ErrOwnedDataOnly
+					}
+					return b.Watch(context.Background(), args[2])
+				default:
+					return ledger.ErrOwnedDataOnly
+				}
+			}
+		}
+	}
 	if command == "assessment-receipts" {
 		if *state != "" || len(args) != 1 {
 			return errors.New("INVALID_ASSESSMENT_ARGUMENTS")

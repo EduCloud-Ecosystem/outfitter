@@ -67,6 +67,14 @@ func marshalCompact(d Data, recordLimit, ledgerLimit int) ([]byte, error) {
 			return nil, e
 		}
 	}
+	if d.OwnedDataScopes != nil {
+		for _, r := range *d.OwnedDataScopes {
+			encoded, e := json.Marshal(r)
+			if e != nil || len(encoded) > recordLimit {
+				return nil, errors.New("ASSESSMENT_METADATA_LIMIT")
+			}
+		}
+	}
 	encoded, e := json.Marshal(d)
 	if e != nil {
 		return nil, e
@@ -132,7 +140,7 @@ func prepareLedgerWrite(d Data, statePath string, recordLimit, ledgerLimit int) 
 	}
 	// Map keys, object syntax and all native/authority fields are invariant. Taking
 	// the longer encoded record independently yields the maximum mixed JSON size.
-	maximum, e := marshalCompact(largest, recordLimit, ledgerLimit)
+	maximum, e := marshalCompact(ownedMaximumData(largest), recordLimit, ledgerLimit)
 	if e != nil {
 		return plan, e
 	}
