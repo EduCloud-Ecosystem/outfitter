@@ -48,11 +48,13 @@ type executionContextProvider struct {
 	creates, starts   int
 	startContext      string
 	trace             *executionContextTrace
+	expiry            *executionExpiryTrace
 	created, removed  x.DockerResourceIdentity
 	inspects, removes int
 }
 
 func (p *executionContextProvider) Create(ctx context.Context, request assessmentPhaseRequest) (x.DockerResourceIdentity, error) {
+	p.expiry.bindCallback(ctx)
 	p.trace.record(ctx, "create_entry")
 	p.creates++
 	id, e := p.executionTestProvider.Create(ctx, request)
@@ -81,10 +83,13 @@ func (p *executionContextProvider) Inspect(ctx context.Context, request assessme
 	p.mu.Lock()
 	p.inspects++
 	p.mu.Unlock()
-	return p.executionTestProvider.Inspect(ctx, request)
+	obs, e := p.executionTestProvider.Inspect(ctx, request)
+	p.expiry.record("inspect_return", e)
+	return obs, e
 }
 func (p *executionContextProvider) Remove(ctx context.Context, id x.DockerResourceIdentity) error {
 	e := p.executionTestProvider.Remove(ctx, id)
+	p.expiry.record("remove_return", e)
 	if e == nil {
 		p.mu.Lock()
 		p.removes++
@@ -98,15 +103,33 @@ func TestExecutionCallerCancelSuppressesLaterProviderEffects(t *testing.T) {
 	for _, point := range []string{"before-create", "after-create-before-start"} {
 		t.Run(point, func(t *testing.T) {
 			f := newExecutionFixture(t)
+			var expiry *executionExpiryTrace
+			if point == "after-create-before-start" {
+				expiry = &executionExpiryTrace{}
+				// Before seal: observe the actual copied watcher without parking it.
+				f.b.assessment.owned.fault = expiry.hook
+				originalTransport := f.b.assessment.transport
+				f.b.assessment.transport = func(ctx context.Context, scope x.ExecutionScope, phase string) (io.Closer, error) {
+					transport, e := originalTransport(ctx, scope, phase)
+					if transport != nil {
+						transport = &executionExpiryTransport{transport, expiry}
+					}
+					return transport, e
+				}
+				// LIFO: owner join attempt, snapshot, then fixture teardown. The
+				// after_cleanup label does not prove a timed-out owner drained.
+				t.Cleanup(func() { expiry.log(t, "after_cleanup") })
+			}
 			status := f.seal(t)
 			gate := &executionContextGate{entered: make(chan struct{}), release: make(chan struct{})}
-			p := &executionContextProvider{executionTestProvider: f.p, gate: gate, afterCreate: point == "after-create-before-start", trace: newExecutionContextTrace(), startContext: "none"}
+			p := &executionContextProvider{executionTestProvider: f.p, gate: gate, afterCreate: point == "after-create-before-start", trace: newExecutionContextTrace(), expiry: expiry, startContext: "none"}
 			f.b.assessment.provider = p
 			if !p.afterCreate {
 				f.b.assessment.storage = executionContextStorage{f.b.assessment.storage, gate}
 			}
 			c := executionControl(f, status, 0)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			expiry.bind(time.Now(), ctx)
 			type answer struct {
 				result x.Result
 				err    error
@@ -118,6 +141,7 @@ func TestExecutionCallerCancelSuppressesLaterProviderEffects(t *testing.T) {
 				p.trace.record(ctx, "run_entry")
 				r, e := f.b.RunAssessmentOnce(ctx, c)
 				p.trace.record(ctx, "run_return")
+				expiry.record("run_return", e)
 				done <- answer{r, e}
 			}()
 			t.Cleanup(func() {
@@ -144,6 +168,8 @@ func TestExecutionCallerCancelSuppressesLaterProviderEffects(t *testing.T) {
 				p.trace.log(t)
 				t.Fatal("late cancel gate did not retain a live caller and reservation")
 			}
+			// Enable before cancel: the gate may return on ctx.Done before unblock.
+			expiry.record("release", nil)
 			cancel()
 			gate.unblock()
 			var got answer
@@ -151,6 +177,7 @@ func TestExecutionCallerCancelSuppressesLaterProviderEffects(t *testing.T) {
 			case got = <-done:
 			case <-time.After(4 * time.Second):
 				p.trace.log(t)
+				expiry.log(t, "before_fatal")
 				t.Fatal("original owner did not drain after caller cancellation")
 			}
 			p.trace.log(t)
