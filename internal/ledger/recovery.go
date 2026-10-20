@@ -189,6 +189,13 @@ func (s *Store) RecoveryStatus() (RecoveryReport, error) {
 // Recovery takes nonblocking exclusive leases before either authority lock.
 func (s *Store) ExecutionLease() (func(), error) { return s.executionLease(false) }
 func (s *Store) executionLease(exclusive bool) (func(), error) {
+	if s.ownedIdentity != nil {
+		mode := syscall.LOCK_SH
+		if exclusive {
+			mode = syscall.LOCK_EX
+		}
+		return s.ownedLease("execution.lock", s.ownedIdentity.ExecutionLease, mode|syscall.LOCK_NB)
+	}
 	fd, e := syscall.Open(filepath.Join(s.Dir, "execution.lock"), syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0600)
 	if e != nil {
 		return nil, e
@@ -527,12 +534,28 @@ func (s *Store) Activate(source, dir, digest string) (RecoveryReport, error) {
 }
 func (s *Store) activate(source, dir, digest string, afterFence func() error) (RecoveryReport, error) {
 	var out RecoveryReport
+	if e := s.View(func(d Data) error {
+		if d.Version == 6 {
+			return ErrOwnedDataOnly
+		}
+		return nil
+	}); e != nil {
+		return out, e
+	}
 	c, e := loadCheckpoint(dir, digest)
 	if e != nil {
 		return out, e
 	}
 	src, e := Open(source, false)
 	if e != nil {
+		return out, e
+	}
+	if e := src.View(func(d Data) error {
+		if d.Version == 6 {
+			return ErrOwnedDataOnly
+		}
+		return nil
+	}); e != nil {
 		return out, e
 	}
 	if src.Dir == s.Dir || src.Dir != c.manifest.SourceStatePath {

@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/EduCloud-Ecosystem/outfitter/internal/owneddata"
 	"github.com/EduCloud-Ecosystem/outfitter/internal/provider"
 )
 
@@ -28,15 +29,20 @@ type Project struct {
 	Budget int64  `json:"budget_cpu_seconds"`
 }
 type Data struct {
-	NativeAccounts map[string]NativeAccount   `json:"native_accounts,omitempty"`
-	NativeRuns     map[string]NativeRecord    `json:"native_runs,omitempty"`
-	Version        int                        `json:"version"`
-	Owner          string                     `json:"owner"`
-	Authority      *Authority                 `json:"authority,omitempty"`
-	Projects       map[string]Project         `json:"projects"`
-	Runs           map[string]provider.Record `json:"runs"`
+	OwnedDataScopes   *map[string]owneddata.Scope `json:"owned_data_scopes,omitempty"`
+	OwnedDataIdentity *OwnedDataIdentity          `json:"owned_data_identity,omitempty"`
+	NativeAccounts    map[string]NativeAccount    `json:"native_accounts,omitempty"`
+	NativeRuns        map[string]NativeRecord     `json:"native_runs,omitempty"`
+	Version           int                         `json:"version"`
+	Owner             string                      `json:"owner"`
+	Authority         *Authority                  `json:"authority,omitempty"`
+	Projects          map[string]Project          `json:"projects"`
+	Runs              map[string]provider.Record  `json:"runs"`
 }
-type Store struct{ Dir string }
+type Store struct {
+	Dir           string
+	ownedIdentity *OwnedDataIdentity
+}
 type Usage struct {
 	ProjectID string `json:"project_id"`
 	Budget    int64  `json:"budget_cpu_seconds"`
@@ -68,7 +74,19 @@ func Open(dir string, create bool) (*Store, error) {
 		return nil, errors.New("state directory cannot contain symbolic links")
 	}
 	p = real
-	s := &Store{p}
+	s := &Store{Dir: p}
+	// Pin fresh assessment-only authority objects before a lock operation could
+	// create a missing lease. Legacy initialization/migration remains unchanged.
+	if _, statErr := os.Lstat(filepath.Join(p, "ledger.json")); statErr == nil {
+		d, readErr := s.read()
+		if readErr != nil {
+			return nil, readErr
+		}
+		if d.Version == 6 {
+			identity := *d.OwnedDataIdentity
+			s.ownedIdentity = &identity
+		}
+	}
 	e = s.lock(func() error {
 		path := filepath.Join(p, "ledger.json")
 		if _, e := os.Lstat(path); e == nil {
@@ -115,6 +133,9 @@ func Open(dir string, create bool) (*Store, error) {
 	return s, e
 }
 func (s *Store) lock(fn func() error) error {
+	if s.ownedIdentity != nil {
+		return s.ownedLock(fn)
+	}
 	fd, e := syscall.Open(filepath.Join(s.Dir, "ledger.lock"), syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW, 0600)
 	if e != nil {
 		return e
@@ -136,12 +157,20 @@ func (s *Store) read() (Data, error) {
 	if !st.Mode().IsRegular() || st.Size() > 64<<20 {
 		return d, errors.New("invalid ledger file")
 	}
-	f, e := os.Open(p)
+	f, e := os.OpenFile(p, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if e != nil {
 		return d, e
 	}
 	defer f.Close()
-	dec := json.NewDecoder(io.LimitReader(f, 64<<20))
+	opened, e := f.Stat()
+	if e != nil || !opened.Mode().IsRegular() || !os.SameFile(st, opened) {
+		return d, owneddata.ErrUnresolved
+	}
+	raw, e := io.ReadAll(io.LimitReader(f, maxLedgerBytes+1))
+	if e != nil || len(raw) > maxLedgerBytes {
+		return d, errors.New("invalid ledger file")
+	}
+	dec := json.NewDecoder(strings.NewReader(string(raw)))
 	dec.DisallowUnknownFields()
 	if e = dec.Decode(&d); e != nil {
 		return d, fmt.Errorf("invalid ledger: %w", e)
@@ -149,16 +178,26 @@ func (s *Store) read() (Data, error) {
 	if dec.Decode(new(any)) != io.EOF {
 		return d, errors.New("trailing ledger data")
 	}
+	if d.Version == 6 {
+		if e := owneddata.ClosedJSON(raw, &d, maxLedgerBytes); e != nil {
+			return d, e
+		}
+	}
 	if e = validate(d); e != nil {
 		return d, e
 	}
 	if d.Version >= 2 && d.Authority.StatePath != s.Dir {
 		return d, errors.New("ledger belongs to a different state path; use held restore")
 	}
+	if d.Version == 6 {
+		if e := s.checkOwnedIdentity(d.OwnedDataIdentity); e != nil {
+			return d, e
+		}
+	}
 	return d, nil
 }
 func validate(d Data) error {
-	if (d.Version != 1 && d.Version != 2 && d.Version != 3 && d.Version != 4 && d.Version != 5) || len(d.Owner) != 32 || d.Projects == nil || d.Runs == nil || len(d.Projects)+len(d.NativeAccounts) > MaxProjects || len(d.Runs)+len(d.NativeRuns) > MaxRecords {
+	if (d.Version != 1 && d.Version != 2 && d.Version != 3 && d.Version != 4 && d.Version != 5 && d.Version != 6) || len(d.Owner) != 32 || d.Projects == nil || d.Runs == nil || len(d.Projects)+len(d.NativeAccounts) > MaxProjects || len(d.Runs)+len(d.NativeRuns)+ownedCount(d) > MaxRecords {
 		return errors.New("incomplete or over-capacity ledger")
 	}
 	if e := validatePlacements(d); e != nil {
@@ -168,6 +207,9 @@ func validate(d Data) error {
 		return e
 	}
 	if e := validateAuthority(d); e != nil {
+		return e
+	}
+	if e := validateOwnedData(d); e != nil {
 		return e
 	}
 	if decoded, e := hex.DecodeString(d.Owner); e != nil || len(decoded) != 16 {
@@ -285,6 +327,7 @@ func (s *Store) Update(fn func(*Data) error) error {
 		}
 		experiments := nativeExperimentGuards(d)
 		placements := placementGuards(d)
+		owned := captureOwnedGuard(d)
 		if e = fn(&d); e != nil {
 			return e
 		}
@@ -292,6 +335,9 @@ func (s *Store) Update(fn func(*Data) error) error {
 			return e
 		}
 		if e = preservePlacements(placements, d); e != nil {
+			return e
+		}
+		if e = preserveOwnedGuard(owned, d); e != nil {
 			return e
 		}
 		return s.write(d)
