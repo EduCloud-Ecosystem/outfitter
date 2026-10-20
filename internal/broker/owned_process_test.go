@@ -506,6 +506,8 @@ func TestOwnedSeparateProcessesShortOverlongAndClaimACKLoss(t *testing.T) {
 			if !s.WriterStarted {
 				t.Fatal("writer claim lost")
 			}
+			// This retained stale-generation replay is not isolated proof of
+			// the writer latch; CompletedWriterCannotRestart covers that gate.
 			_, failure = f.invoke("ingest", c, []byte(tc.body), "")
 			if failure.Code == "" {
 				t.Fatal("writer replay accepted")
@@ -518,6 +520,66 @@ func TestOwnedSeparateProcessesShortOverlongAndClaimACKLoss(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOwnedSeparateProcessesCompletedWriterCannotRestart(t *testing.T) {
+	f := newOwnedProcessFixture(t)
+	ready := f.ready()
+	body := []byte("single-writer-payload")
+	c := f.control("ingest", ready)
+	c["content_length"] = len(body)
+	complete, failure := f.invoke("ingest", c, body, "")
+	if failure.Code != "" {
+		t.Fatal("initial upload failed", failure)
+	}
+	s := f.scope()
+	if s.State != "accepting" || s.DenyLatched || !s.WriterStarted || !s.UploadComplete || !s.ContentCloseConfirmed || s.Generation != complete.Generation {
+		t.Fatal("writer retry preconditions not isolated", s)
+	}
+	if livePipe(f.ownerRead, s.FilesystemIdentity.OwnerRead) != "observed_current" || livePipe(f.watchRead, s.FilesystemIdentity.WatchRead) != "observed_current" {
+		t.Fatal("retry lifelines not current")
+	}
+	before, _ := json.Marshal(s)
+	c = f.control("ingest", complete) // Current generation, before any seal or denial.
+	c["content_length"] = len(body)
+	cmd := f.command("ingest", "")
+	input, e := cmd.StdinPipe()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer input.Close()
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if e = cmd.Start(); e != nil {
+		t.Fatal(e)
+	}
+	header, _ := json.Marshal(c)
+	_, _ = input.Write(append(header, '\n')) // No body or EOF to hide a second writer.
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case e = <-done:
+		if e == nil || cmd.ProcessState.ExitCode() != 2 {
+			t.Fatal("second writer was accepted", e)
+		}
+	case <-time.After(2 * time.Second):
+		_ = cmd.Process.Kill()
+		<-done
+		t.Fatal("second writer waited for body bytes or EOF")
+	}
+	expected, _ := owneddata.CanonicalReply(owneddata.ErrorReply{Schema: owneddata.ErrorSchema, Code: owneddata.ErrDenied.Error()})
+	if !bytes.Equal(stdout.Bytes(), expected) || stderr.Len() != 0 {
+		t.Fatalf("wrong writer refusal: stdout=%q stderr=%q", stdout.Bytes(), stderr.Bytes())
+	}
+	after, _ := json.Marshal(f.scope())
+	if !bytes.Equal(before, after) {
+		t.Fatal("second writer changed scope metadata")
+	}
+	content, e := os.ReadFile(filepath.Join(f.root, s.ScopeID, "payload"))
+	if e != nil || !bytes.Equal(content, body) {
+		t.Fatal("second writer changed content", e)
+	}
+	t.Logf("current-generation retry: generation=%d state=%s deny=%t writer_started=%t upload_complete=%t; ASSESSMENT_DENIED before body/EOF; metadata and payload unchanged", s.Generation, s.State, s.DenyLatched, s.WriterStarted, s.UploadComplete)
 }
 
 func TestOwnedSeparateProcessesOwnerAndWatcherLoss(t *testing.T) {

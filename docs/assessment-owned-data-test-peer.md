@@ -54,6 +54,15 @@ later one-shot commands call the real `Broker.OwnedData`. Descriptor identities
 are bound separately because opposite pipe endpoints may have different inodes.
 No readiness file, PID, imported reply or cached epoch can authorize a writer.
 
+Anonymous lifelines require a positive platform check on the opened descriptor.
+Linux requires kernel `pipefs` (`Fstatfs`, magic `0x50495045`) and one link;
+Darwin requires zero links and a successful, exact-size self
+`PROC_PIDFDPIPEINFO` result (184-byte `pipe_fdinfo`, kernel `DTYPE_PIPE`).
+Named, renamed and unlinked filesystem FIFOs are refused. Unsupported platforms
+and unavailable or incomplete descriptor queries fail closed. These checks
+preserve endpoint access direction, bound identity and the pipe-pair challenge;
+regular private files still require exactly one link.
+
 Closed fixtures are in `internal/owneddata/testdata`. Non-ingest requests are
 JSON plus EOF. Ingest is one JSON header line, LF, exactly `content_length`
 bytes, then EOF. A caller closes broker stdin when its framed request ends.

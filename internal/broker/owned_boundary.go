@@ -64,7 +64,7 @@ func openedIdentity(f *os.File, kind string) (owneddata.FilesystemIdentity, erro
 	if kind == "directory" && !st.IsDir() || kind == "file" && (!st.Mode().IsRegular() || st.Mode().Perm()&0077 != 0) || kind == "pipe" && st.Mode()&os.ModeNamedPipe == 0 {
 		return owneddata.FilesystemIdentity{}, owneddata.ErrUnresolved
 	}
-	if raw, ok := st.Sys().(*syscall.Stat_t); !ok || kind == "file" && raw.Nlink != 1 || kind == "pipe" && raw.Nlink != 0 {
+	if raw, ok := st.Sys().(*syscall.Stat_t); !ok || kind == "file" && raw.Nlink != 1 || kind == "pipe" && !anonymousPipe(f, raw) {
 		return owneddata.FilesystemIdentity{}, owneddata.ErrUnresolved
 	}
 	return ledger.FileIdentity(st)
