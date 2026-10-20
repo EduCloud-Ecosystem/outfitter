@@ -25,9 +25,16 @@ MAX_STDOUT = 64 * 1024 * 1024
 MAX_STDERR = 8 * 1024 * 1024
 MAX_LINE = 1024 * 1024
 MAX_METADATA = 4 * 1024 * 1024
-# Fixed CI policy: move this whole parent, including all its subtests, to R2.
-COMPLEMENT_EXECUTION_PARENT = "TestExecutionCleanupLateUncertaintyCannotPublishAbsence"
+# Fixed CI policy: move only these whole parents, including all subtests, to R2.
+COMPLEMENT_EXECUTION_PARENTS = (
+    "TestExecutionCleanupLateUncertaintyCannotPublishAbsence",
+    "TestExecutionFinalResultFreshObservationRejectsLateUncertainty",
+    "TestExecutionFinalResultHistoricalObservationCannotClearCurrentHold",
+    "TestExecutionFinalResultTerminalPublicationFaults",
+    "TestExecutionDeferredCleanupStoppedACKGuards",
+)
 EXPECTED_BROKER = tuple("""
+TestExecutionDeferredCleanupStoppedACKGuards
 TestExecutionPositiveCommitFencesRecheckCurrentAuthority
 TestExecutionMainCloseFailureSurvivesUncertaintyPublicationFault
 TestExecutionNormalExhaustionPersistsSafetyDenial
@@ -51,6 +58,9 @@ TestExecutionCallerCancelSuppressesLaterProviderEffects
 TestExecutionCallerCancelAfterClaimRetainsUncertainty
 TestExecutionCallerCancelReaderCollectorBeforeDispatch
 TestExecutionConnectedTwoPhaseOnceAndNonretention
+TestExecutionFinalResultFreshObservationRejectsLateUncertainty
+TestExecutionFinalResultHistoricalObservationCannotClearCurrentHold
+TestExecutionFinalResultTerminalPublicationFaults
 TestExecutionFinalizeLateUncertaintyKeepsHeld
 TestExecutionOwnershipPositiveLifecycleAndCleanup
 TestExecutionOwnershipStoreRefusesForgedCompletionAndCopiesShareOnce
@@ -81,6 +91,8 @@ TestExecutionSessionPhaseClosedBranchControls
 TestExecutionSessionActualOwnerLifecycleAndInertStage
 TestExecutionPrivateSessionOwnerHelper
 TestExecutionPrivateSessionPhaseHelper
+TestExecutionStopFirstDenialACKAndGenerationGuards
+TestExecutionStopAlreadyDeniedUsesCommittedState
 TestExecutionWatcherStopsActiveDeniedOrExpiredAttempt
 TestExecutionOutputOverflowCancelsBlockedStart
 TestAtomicConcurrentReservation
@@ -188,8 +200,8 @@ def partition(names, expected=EXPECTED_BROKER):
         if kind != "Benchmark":
             runnable.append(name)
     require(set(runnable) == set(expected), "actual list/source projection mismatch")
-    groups = ([n for n in runnable if n.startswith("TestExecution") and n != COMPLEMENT_EXECUTION_PARENT],
-              [n for n in runnable if not n.startswith("TestExecution") or n == COMPLEMENT_EXECUTION_PARENT])
+    groups = ([n for n in runnable if n.startswith("TestExecution") and n not in COMPLEMENT_EXECUTION_PARENTS],
+              [n for n in runnable if not n.startswith("TestExecution") or n in COMPLEMENT_EXECUTION_PARENTS])
     require(all(groups), "empty broker partition")
     patterns = ["^(" + "|".join(g) + ")$" for g in groups]
     require(all(len(p) <= 65536 for p in patterns), "capped selection pattern")

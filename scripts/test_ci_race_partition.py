@@ -36,7 +36,9 @@ def complete(gate, names):
 class ParserControls(unittest.TestCase):
     def test_real_projection_is_complete_and_disjoint(self):
         selection = ci.partition(list(ci.EXPECTED_BROKER))
-        self.assertEqual([len(g) for g in selection["groups"]], [54, 45])
+        self.assertEqual(len(ci.EXPECTED_BROKER), 105)
+        self.assertEqual(len(set(ci.EXPECTED_BROKER)), 105)
+        self.assertEqual([len(g) for g in selection["groups"]], [56, 49])
         self.assertFalse(set(selection["groups"][0]) & set(selection["groups"][1]))
         self.assertEqual(set().union(*map(set, selection["groups"])), set(ci.EXPECTED_BROKER))
         parent = "TestExecutionFinalizeLateUncertaintyKeepsHeld"
@@ -44,22 +46,66 @@ class ParserControls(unittest.TestCase):
         self.assertEqual(selection["groups"][0].count(parent), 1)
         self.assertNotIn(parent, selection["groups"][1])
         position = ci.EXPECTED_BROKER.index(parent)
-        self.assertEqual(ci.EXPECTED_BROKER[position - 1:position + 2],
-                         ("TestExecutionConnectedTwoPhaseOnceAndNonretention", parent,
+        self.assertEqual(ci.EXPECTED_BROKER[position - 4:position + 2],
+                         ("TestExecutionConnectedTwoPhaseOnceAndNonretention",
+                          "TestExecutionFinalResultFreshObservationRejectsLateUncertainty",
+                          "TestExecutionFinalResultHistoricalObservationCannotClearCurrentHold",
+                          "TestExecutionFinalResultTerminalPublicationFaults", parent,
                           "TestExecutionOwnershipPositiveLifecycleAndCleanup"))
+        self.assertEqual(ci.EXPECTED_BROKER[:2],
+                         ("TestExecutionDeferredCleanupStoppedACKGuards",
+                          "TestExecutionPositiveCommitFencesRecheckCurrentAuthority"))
+        position = ci.EXPECTED_BROKER.index("TestExecutionStopFirstDenialACKAndGenerationGuards")
+        self.assertEqual(ci.EXPECTED_BROKER[position - 1:position + 3],
+                         ("TestExecutionPrivateSessionPhaseHelper",
+                          "TestExecutionStopFirstDenialACKAndGenerationGuards",
+                          "TestExecutionStopAlreadyDeniedUsesCommittedState",
+                          "TestExecutionWatcherStopsActiveDeniedOrExpiredAttempt"))
 
-    def test_only_named_cleanup_parent_moves_and_owned_group_stays_whole(self):
-        moved = "TestExecutionCleanupLateUncertaintyCannotPublishAbsence"
+    def test_only_named_parents_move_and_owned_group_stays_whole(self):
+        moved = (
+            "TestExecutionCleanupLateUncertaintyCannotPublishAbsence",
+            "TestExecutionFinalResultFreshObservationRejectsLateUncertainty",
+            "TestExecutionFinalResultHistoricalObservationCannotClearCurrentHold",
+            "TestExecutionFinalResultTerminalPublicationFaults",
+            "TestExecutionDeferredCleanupStoppedACKGuards",
+        )
+        new_execution = ("TestExecutionStopFirstDenialACKAndGenerationGuards",
+                         "TestExecutionStopAlreadyDeniedUsesCommittedState")
+        added = (*moved[1:], *new_execution)
+        self.assertEqual(ci.COMPLEMENT_EXECUTION_PARENTS, moved)
         selection = ci.partition(list(ci.EXPECTED_BROKER))
         execution, complement = selection["groups"]
-        prior_execution = [n for n in ci.EXPECTED_BROKER if n.startswith("TestExecution")]
-        prior_complement = [n for n in ci.EXPECTED_BROKER if not n.startswith("TestExecution")]
-        self.assertEqual([n for n in prior_execution if n not in execution], [moved])
-        self.assertEqual([n for n in complement if n not in prior_complement], [moved])
-        self.assertEqual(execution, [n for n in prior_execution if n != moved])
-        self.assertEqual([n for n in complement if n != moved], prior_complement)
+        all_execution = [n for n in ci.EXPECTED_BROKER if n.startswith("TestExecution")]
+        self.assertEqual([n for n in all_execution if n not in execution],
+                         [n for n in ci.EXPECTED_BROKER if n in moved])
+        self.assertEqual(execution, [n for n in all_execution if n not in moved])
+        self.assertEqual(complement, [n for n in ci.EXPECTED_BROKER
+                                     if not n.startswith("TestExecution") or n in moved])
         self.assertEqual(complement, [n for n in ci.EXPECTED_BROKER if n in set(complement)])
-        self.assertEqual(complement.count(moved), 1)
+        for name in added:
+            group = execution if name in new_execution else complement
+            other = complement if name in new_execution else execution
+            self.assertEqual(ci.EXPECTED_BROKER.count(name), 1)
+            self.assertEqual(group.count(name), 1)
+            self.assertNotIn(name, other)
+        self.assertEqual(complement.count(moved[0]), 1)
+        prior = [n for n in ci.EXPECTED_BROKER if n not in added]
+        self.assertEqual(len(prior), 99)
+        prior_execution = [n for n in prior if n.startswith("TestExecution") and n != moved[0]]
+        prior_complement = [n for n in prior if not n.startswith("TestExecution") or n == moved[0]]
+        self.assertEqual([len(prior_execution), len(prior_complement)], [54, 45])
+        self.assertEqual([n for n in execution if n not in added], prior_execution)
+        self.assertEqual([n for n in complement if n not in added], prior_complement)
+        # No slash selector may split the ACK five leaves, FinalResult fault
+        # siblings or Stop ACK/generation six leaves into separate invocations.
+        for pattern in selection["patterns"]:
+            self.assertNotIn("/", pattern)
+        for name, group in zip(("R1", "R2"), selection["groups"]):
+            pattern = selection["patterns"][name == "R2"]
+            self.assertEqual(pattern, "^(" + "|".join(group) + ")$")
+        future = ["TestExecutionFinalResultFutureControl", "ExampleOne"]
+        self.assertEqual(ci.partition(future, expected=future)["groups"], ([future[0]], [future[1]]))
         self.assertTrue(all(n in complement for n in ci.EXPECTED_BROKER if n.startswith("TestOwned")))
         self.assertEqual(ci.COMMANDS, ("M0", "M1", "M2", "R1", "R2", "R3"))
 
@@ -645,7 +691,7 @@ class CaptureFailureControls(unittest.TestCase):
             self.assertEqual(summary["status"], "FAIL")
             self.assertEqual(summary["commands"]["R1"]["status"], "FAIL")
             self.assertEqual(summary["commands"]["R2"]["status"], "NOT_RUN")
-            self.assertEqual(len(summary["commands"]["R2"]["parents"][ci.BROKER]), 45)
+            self.assertEqual(len(summary["commands"]["R2"]["parents"][ci.BROKER]), 49)
             self.assertEqual(summary["commands"]["R3"]["status"], "NOT_RUN")
 
 
