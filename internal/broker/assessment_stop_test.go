@@ -343,7 +343,7 @@ func TestExecutionWatcherStopsActiveDeniedOrExpiredAttempt(t *testing.T) {
 			f := newExecutionFixture(t)
 			p := &executionBlockedProvider{executionTestProvider: f.p, started: make(chan executionActiveEntry, 1), stopped: make(chan struct{}), release: make(chan struct{})}
 			f.b.assessment.provider = p
-			if mode == "attempt-expiry" {
+			if mode == "attempt-expiry" || mode == "slot-cancel" {
 				p.expiry = &executionExpiryTrace{}
 				// Before seal: observe the actual copied watcher without parking it.
 				f.b.assessment.owned.fault = p.expiry.hook
@@ -355,7 +355,7 @@ func TestExecutionWatcherStopsActiveDeniedOrExpiredAttempt(t *testing.T) {
 					}
 					return transport, e
 				}
-				// First registered: LIFO runs this AFTER original-owner drain cleanup.
+				// LIFO follows the original-owner join ATTEMPT, not proof of drainage.
 				t.Cleanup(func() { p.expiry.log(t, "after_cleanup") })
 			}
 			var wallShift, tickShift atomic.Int64

@@ -139,14 +139,18 @@ func (b *Broker) RunAssessmentOnce(ctx context.Context, c x.Control) (result x.R
 			_ = owner.CloseAndCommitOwnership()
 		}
 		ownershipReady = true
+		var re error
 		if localUncertain {
 			_, _ = b.assessmentDeny(c.Binding, "io_uncertain")
 			err = x.ErrHeld
-		} else if e := b.assessmentFinalize(context.WithoutCancel(ctx), c); e != nil {
-			err = x.ErrHeld
+			result, re = b.assessmentResult(c, "new_attempt")
+		} else {
+			var finalizeErr error
+			result, finalizeErr, re = b.assessmentFinalizeResult(context.WithoutCancel(ctx), c)
+			if finalizeErr != nil {
+				err = x.ErrHeld
+			}
 		}
-		var re error
-		result, re = b.assessmentResult(c, "new_attempt")
 		if re != nil {
 			err = re
 		}
@@ -547,6 +551,12 @@ func (b *Broker) assessmentResult(c x.Control, disposition string) (x.Result, er
 	if e != nil {
 		return x.Result{}, e
 	}
+	return assessmentResultProjection(c, disposition, s, a)
+}
+
+// The caller supplies one exact fresh observation. This pure untrusted reply
+// neither retains that snapshot nor authorizes claims, effects or scope cleanup.
+func assessmentResultProjection(c x.Control, disposition string, s x.ExecutionScope, a x.AssessmentAttempt) (x.Result, error) {
 	code := "HELD"
 	if a.SerialClear() {
 		code = "OK"

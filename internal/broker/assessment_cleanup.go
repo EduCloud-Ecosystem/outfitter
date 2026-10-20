@@ -24,6 +24,7 @@ func (b *Broker) assessmentCleanupPhases(ctx context.Context, c x.Control) error
 	cleanupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	for _, phase := range []string{"workload", "checker"} {
+		stoppedACK := false
 		p := a.PhaseRecords.Workload
 		if phase == "checker" {
 			p = a.PhaseRecords.Checker
@@ -79,6 +80,7 @@ func (b *Broker) assessmentCleanupPhases(ctx context.Context, c x.Control) error
 			if change(func(v *x.PhaseRecord) { v.StoppedObserved = true }) != nil {
 				continue
 			}
+			stoppedACK = true
 			if b.assessment.provider.Remove(cleanupCtx, identity) != nil {
 				continue
 			}
@@ -88,8 +90,10 @@ func (b *Broker) assessmentCleanupPhases(ctx context.Context, c x.Control) error
 			}
 		}
 		if !obs.Exists && p.CreateReturned && p.ResourceIdentity != nil && !p.CreateAmbiguous {
-			if change(func(v *x.PhaseRecord) { v.StoppedObserved = true }) != nil {
-				continue
+			if !stoppedACK {
+				if change(func(v *x.PhaseRecord) { v.StoppedObserved = true }) != nil {
+					continue
+				}
 			}
 			_ = change(func(v *x.PhaseRecord) { v.RemovalObserved = true })
 		}
@@ -97,7 +101,7 @@ func (b *Broker) assessmentCleanupPhases(ctx context.Context, c x.Control) error
 	return nil
 }
 
-func (b *Broker) assessmentFinalize(ctx context.Context, c x.Control) error {
+func (b *Broker) assessmentFinalizeChanges(ctx context.Context, c x.Control) error {
 	_, a, e := b.assessmentAttempt(c.Binding, *c.Slot)
 	if e != nil {
 		return e
@@ -164,7 +168,15 @@ func (b *Broker) assessmentFinalize(ctx context.Context, c x.Control) error {
 			return e
 		}
 	}
-	_, a, e = b.assessmentAttempt(c.Binding, *c.Slot)
+	return nil
+}
+
+// assessmentFinalize retains the fresh clearance check for metadata-only callers.
+func (b *Broker) assessmentFinalize(ctx context.Context, c x.Control) error {
+	if e := b.assessmentFinalizeChanges(ctx, c); e != nil {
+		return e
+	}
+	_, a, e := b.assessmentAttempt(c.Binding, *c.Slot)
 	if e != nil {
 		return e
 	}
@@ -172,6 +184,26 @@ func (b *Broker) assessmentFinalize(ctx context.Context, c x.Control) error {
 		return x.ErrHeld
 	}
 	return nil
+}
+
+// assessmentFinalizeResult shares only a successful final fresh observation.
+// Its separate errors preserve finalization and public-reply error precedence.
+// Every non-fast path makes the legacy independent result read exactly once;
+// none can resume mutations or treat that observation as effect authority.
+func (b *Broker) assessmentFinalizeResult(ctx context.Context, c x.Control) (x.Result, error, error) {
+	finalizeErr := b.assessmentFinalizeChanges(ctx, c)
+	if finalizeErr == nil {
+		s, a, e := b.assessmentAttempt(c.Binding, *c.Slot)
+		if e != nil {
+			finalizeErr = e
+		} else if !a.SerialClear() {
+			finalizeErr = x.ErrHeld
+		} else if result, e := assessmentResultProjection(c, "new_attempt", s, a); e == nil {
+			return result, nil, nil
+		}
+	}
+	result, replyErr := b.assessmentResult(c, "new_attempt")
+	return result, finalizeErr, replyErr
 }
 
 // A slot-specific metadata operation never removes its retained input scope or
