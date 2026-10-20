@@ -118,7 +118,7 @@ func validateMeasurementV2(m ManifestV2, r MeasurementReceiptV2, c CleanupReceip
 			if a.ChargedCPUSeconds != 0 || a.Provenance != "reserved" {
 				return invalid
 			}
-		} else if active || x.Status == "unknown" || a.ChargedCPUSeconds != reserved || a.Provenance != "estimated_upper_bound" || c.ObservedScopes[0].Deletion != "reported_complete" {
+		} else if active || a.ChargedCPUSeconds != reserved || a.Provenance != "estimated_upper_bound" || c.ObservedScopes[0].Deletion != "reported_complete" {
 			return invalid
 		}
 		if x.Status == "succeeded" && (!x.ExecutionStarted || x.ExitCode == nil || *x.ExitCode != 0 || a.UnresolvedLiability || x.CancelRequested) || x.Status == "running" && !x.ExecutionStarted {

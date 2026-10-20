@@ -92,16 +92,31 @@ legacy projection. Reservation source is exactly
 | State | Reservation and accounting |
 | --- | --- |
 | Not admitted | Failed/not_admitted; zero reservation and charge; no unresolved accounting liability |
-| Admitted, unsettled or unknown | Exactly CPU count × timeout reserved; zero settled charge; `reserved` provenance and unresolved liability; the entire reservation stays held |
+| Admitted, CPU accounting unsettled (including unknown execution) | Exactly CPU count × timeout reserved; zero settled charge; `reserved` provenance and unresolved liability; the entire reservation stays held |
 | Admitted, settled | Full per-attempt reservation charged; `estimated_upper_bound` provenance; reported execution-resource cleanup complete |
 
-An `unknown` execution always remains unresolved, even if a deletion is
-reported. No refund or retry is inferred. A settled charge is per attempt, not
+An `unknown` execution remains unknown even when its conservative CPU accounting
+is settled after reported execution-resource cleanup. That form charges the
+exact full per-attempt ceiling with `estimated_upper_bound` provenance and
+`unresolved_liability: false`; the retained reservation ceiling is the original
+bound, not a second live hold. Unknown execution can also retain the full
+unresolved hold with zero settled charge. Neither form invents an exit code or
+quality result. No partial charge, refund, charged-plus-unresolved double count,
+active-state settlement, replay, reopened attempt, or new grant is inferred.
+A settled charge is per attempt, not
 the aggregate manifest CPU budget. Failed/OOM/cancelled attempts retain their
 failure category and conservative charge or hold. Success requires execution
 started, exit code zero, no cancellation, and settled accounting. Quality
 passed/failed remains only an `unverified_checker` claim; unknown uses `none`.
 Provider charge stays unknown/unsupported, null, unit unknown, source none.
+
+This preserves existing broker reconciliation semantics without changing the
+accepted journal: unverified JSON can describe accounting settlement but cannot
+clear an actual ambiguous-create, incomplete-create, active writer/reader/
+checker, ownership, or cleanup hold. A later authoritative bridge must check
+those guards using the actual boundary. Caller-reported deletion is never that
+proof. Compute cleanup does not resolve temporary-data/recovery cleanup,
+termination, access revocation, provider billing, or measurement availability.
 
 ## Metric scope and cleanup limits
 

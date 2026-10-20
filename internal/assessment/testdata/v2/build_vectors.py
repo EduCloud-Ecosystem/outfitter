@@ -150,7 +150,8 @@ def receipts(m, maximum=False):
 def vectors():
     files = {}
     sizes = {}
-    for prefix, maximum in (("", False), ("maximum-", True), ("maximum-settled-", True)):
+    for prefix, maximum in (("", False), ("maximum-", True), ("maximum-settled-", True),
+                            ("unknown-held-", False), ("unknown-settled-", False)):
         m = manifest(maximum)
         s = receipts(m, maximum)
         if prefix == "maximum-settled-":
@@ -162,6 +163,17 @@ def vectors():
             s["cleanup"]["remaining_liabilities"] = [
                 "termination_unresolved", "access_revocation_unknown",
                 "data_cleanup_unknown", "recovery_cleanup_unknown"]
+            s["measurement"]["cleanup_receipt_sha256"] = digest(s["cleanup"])
+        if prefix.startswith("unknown-"):
+            s["measurement"]["execution"].update(
+                status="unknown", failure_category="unknown", exit_code=None)
+            if prefix == "unknown-held-":
+                s["measurement"]["conservative_accounting"] = {
+                    "charged_cpu_seconds": 0, "provenance": "reserved", "unresolved_liability": True}
+                s["cleanup"]["observed_scopes"][0]["deletion"] = "unknown"
+                s["cleanup"]["remaining_liabilities"] = [
+                    "termination_unresolved", "access_revocation_unknown", "execution_cleanup_unknown",
+                    "data_cleanup_unknown", "recovery_cleanup_unknown", "accounting_unresolved"]
             s["measurement"]["cleanup_receipt_sha256"] = digest(s["cleanup"])
         result = {"schema": "outfitter.assessment-receipts-result/v2", "validation": "valid_unverified",
                   "manifest_sha256": digest(m), "measurement_sha256": digest(s["measurement"]),

@@ -54,3 +54,12 @@ V1 vectors in the parent directory and owned-data fixtures are frozen. No old
 parser is broadened, and no legacy preview or accepted PR51 digest is replaced.
 Waypoint's old v1 path must continue to reject this schema until its distinct
 reviewed v2 implementation consumes these exact vectors after AS1 acceptance.
+
+The `unknown-held-` and `unknown-settled-` vectors preserve unknown execution
+and quality with no exit code. The latter describes full conservative CPU
+accounting settlement after reported execution-resource cleanup. It does not
+resolve data/recovery/termination/access liabilities or attest an actual journal
+transition. Its reservation ceiling is the original bound, not a second hold.
+These forms preserve accepted broker semantics; the earlier source-only design
+that required every unknown outcome to hold CPU accounting was corrected in a
+separate commit. All earlier test logs and generated indices remain historical.

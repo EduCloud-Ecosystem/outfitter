@@ -66,7 +66,7 @@ func TestV2IndependentCanonicalVectorsAndBounds(t *testing.T) {
 			t.Fatal("independent size drift", name)
 		}
 	}
-	for _, prefix := range []string{"", "maximum-", "maximum-settled-"} {
+	for _, prefix := range []string{"", "maximum-", "maximum-settled-", "unknown-held-", "unknown-settled-"} {
 		t.Run(prefix+"canonical", func(t *testing.T) {
 			m, s := sharedV2(t, prefix)
 			result, e := ValidateV2(m, s)
@@ -91,7 +91,7 @@ func TestV2IndependentCanonicalVectorsAndBounds(t *testing.T) {
 			if len(vector(t, "v2/"+prefix+"benchmark-manifest.canonical")) >= MaxManifestV2Bytes || len(vector(t, "v2/"+prefix+"receipt-set.canonical")) >= MaxReceiptBytes || out.Len() >= MaxOutputBytes || len(request) >= MaxRequestBytes {
 				t.Fatal("maximum metadata exceeds existing wire bounds")
 			}
-			if prefix != "" && (len(m.Reservations) != 12 || len(m.Workload.Image) != 512 || len(m.AssessmentID) != 80 || m.Instruction == nil || s.Cleanup.PriorReceiptSHA256 == nil) {
+			if strings.HasPrefix(prefix, "maximum-") && (len(m.Reservations) != 12 || len(m.Workload.Image) != 512 || len(m.AssessmentID) != 80 || m.Instruction == nil || s.Cleanup.PriorReceiptSHA256 == nil) {
 				t.Fatal("maximum form omitted a maximum-width field or collection")
 			}
 			t.Logf("scalar-only manifest=%d receipt_set=%d result=%d request=%d bytes", len(vector(t, "v2/"+prefix+"benchmark-manifest.canonical")), len(vector(t, "v2/"+prefix+"receipt-set.canonical")), out.Len(), len(request))
@@ -173,35 +173,31 @@ func TestV2ManifestLimitsAndDesign(t *testing.T) {
 
 func TestV2ReceiptContradictionsWithoutDigestMasking(t *testing.T) {
 	changes := map[string]func(*ReceiptSetV2){
-		"manifest-digest":       func(s *ReceiptSetV2) { s.Measurement.Binding.ManifestSHA256 = strings.Repeat("0", 64) },
-		"manifest-schema":       func(s *ReceiptSetV2) { s.Measurement.Binding.ManifestSchema = "educloud.benchmark-manifest/v1" },
-		"binding-profile":       func(s *ReceiptSetV2) { s.Measurement.Binding.ExecutionProfile.Version++ },
-		"assessment":            func(s *ReceiptSetV2) { s.Measurement.Binding.AssessmentID = "different" },
-		"project":               func(s *ReceiptSetV2) { s.Measurement.Binding.ProjectID = "different" },
-		"attempt":               func(s *ReceiptSetV2) { s.Measurement.Binding.AttemptID = "different" },
-		"reservation":           func(s *ReceiptSetV2) { s.Measurement.Binding.ReservationID = "different" },
-		"stage":                 func(s *ReceiptSetV2) { s.Measurement.Binding.StageID = "different" },
-		"environment":           func(s *ReceiptSetV2) { s.Measurement.Binding.EnvironmentID = "different" },
-		"image":                 func(s *ReceiptSetV2) { s.Measurement.Binding.Image = "sha256:" + strings.Repeat("f", 64) },
-		"hardware":              func(s *ReceiptSetV2) { s.Measurement.Binding.Hardware.CPUCount++ },
-		"method":                func(s *ReceiptSetV2) { s.Measurement.Binding.MeasurementMethod.Version++ },
-		"sample-role":           func(s *ReceiptSetV2) { s.Measurement.Binding.SampleRole = "held_out" },
-		"sample-size":           func(s *ReceiptSetV2) { s.Measurement.Binding.SampleSize++ },
-		"repetition":            func(s *ReceiptSetV2) { s.Measurement.Binding.Repetition++ },
-		"receipt-schema":        func(s *ReceiptSetV2) { s.Measurement.Schema = MeasurementSchema },
-		"cleanup-schema":        func(s *ReceiptSetV2) { s.Cleanup.Schema = CleanupSchema },
-		"set-schema":            func(s *ReceiptSetV2) { s.Schema = SetSchema },
-		"authenticated":         func(s *ReceiptSetV2) { s.Measurement.Observation.Authenticated = true },
-		"independent":           func(s *ReceiptSetV2) { s.Cleanup.Observation.IndependentlyVerified = true },
-		"legacy-observation":    func(s *ReceiptSetV2) { s.Cleanup.Observation.SourceKind = "legacy_projection" },
-		"legacy-reservation":    func(s *ReceiptSetV2) { s.Measurement.ReservationCeiling.Source = "legacy_broker_receipt" },
-		"aggregate-reservation": func(s *ReceiptSetV2) { s.Measurement.ReservationCeiling.CPUSeconds = 21600 },
-		"charge-drop":           func(s *ReceiptSetV2) { s.Measurement.ConservativeAccounting.ChargedCPUSeconds-- },
-		"aggregate-charge":      func(s *ReceiptSetV2) { s.Measurement.ConservativeAccounting.ChargedCPUSeconds = 21600 },
-		"unknown-settled": func(s *ReceiptSetV2) {
-			s.Measurement.Execution.Status = "unknown"
-			s.Measurement.Execution.FailureCategory = "unknown"
-		},
+		"manifest-digest":           func(s *ReceiptSetV2) { s.Measurement.Binding.ManifestSHA256 = strings.Repeat("0", 64) },
+		"manifest-schema":           func(s *ReceiptSetV2) { s.Measurement.Binding.ManifestSchema = "educloud.benchmark-manifest/v1" },
+		"binding-profile":           func(s *ReceiptSetV2) { s.Measurement.Binding.ExecutionProfile.Version++ },
+		"assessment":                func(s *ReceiptSetV2) { s.Measurement.Binding.AssessmentID = "different" },
+		"project":                   func(s *ReceiptSetV2) { s.Measurement.Binding.ProjectID = "different" },
+		"attempt":                   func(s *ReceiptSetV2) { s.Measurement.Binding.AttemptID = "different" },
+		"reservation":               func(s *ReceiptSetV2) { s.Measurement.Binding.ReservationID = "different" },
+		"stage":                     func(s *ReceiptSetV2) { s.Measurement.Binding.StageID = "different" },
+		"environment":               func(s *ReceiptSetV2) { s.Measurement.Binding.EnvironmentID = "different" },
+		"image":                     func(s *ReceiptSetV2) { s.Measurement.Binding.Image = "sha256:" + strings.Repeat("f", 64) },
+		"hardware":                  func(s *ReceiptSetV2) { s.Measurement.Binding.Hardware.CPUCount++ },
+		"method":                    func(s *ReceiptSetV2) { s.Measurement.Binding.MeasurementMethod.Version++ },
+		"sample-role":               func(s *ReceiptSetV2) { s.Measurement.Binding.SampleRole = "held_out" },
+		"sample-size":               func(s *ReceiptSetV2) { s.Measurement.Binding.SampleSize++ },
+		"repetition":                func(s *ReceiptSetV2) { s.Measurement.Binding.Repetition++ },
+		"receipt-schema":            func(s *ReceiptSetV2) { s.Measurement.Schema = MeasurementSchema },
+		"cleanup-schema":            func(s *ReceiptSetV2) { s.Cleanup.Schema = CleanupSchema },
+		"set-schema":                func(s *ReceiptSetV2) { s.Schema = SetSchema },
+		"authenticated":             func(s *ReceiptSetV2) { s.Measurement.Observation.Authenticated = true },
+		"independent":               func(s *ReceiptSetV2) { s.Cleanup.Observation.IndependentlyVerified = true },
+		"legacy-observation":        func(s *ReceiptSetV2) { s.Cleanup.Observation.SourceKind = "legacy_projection" },
+		"legacy-reservation":        func(s *ReceiptSetV2) { s.Measurement.ReservationCeiling.Source = "legacy_broker_receipt" },
+		"aggregate-reservation":     func(s *ReceiptSetV2) { s.Measurement.ReservationCeiling.CPUSeconds = 21600 },
+		"charge-drop":               func(s *ReceiptSetV2) { s.Measurement.ConservativeAccounting.ChargedCPUSeconds-- },
+		"aggregate-charge":          func(s *ReceiptSetV2) { s.Measurement.ConservativeAccounting.ChargedCPUSeconds = 21600 },
 		"active-settled":            func(s *ReceiptSetV2) { s.Measurement.Execution.Status = "running" },
 		"success-without-start":     func(s *ReceiptSetV2) { s.Measurement.Execution.ExecutionStarted = false },
 		"success-nonzero-exit":      func(s *ReceiptSetV2) { n := 1; s.Measurement.Execution.ExitCode = &n },
@@ -286,6 +282,64 @@ func TestV2LifecycleHoldsAndCharges(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestV2UnknownExecutionAndCPUAccountingStaySeparate(t *testing.T) {
+	for _, prefix := range []string{"unknown-held-", "unknown-settled-"} {
+		m, s := sharedV2(t, prefix)
+		before := encoded(t, s)
+		result, e := invokeV2(t, m, s)
+		if e != nil || !bytes.Equal(before, encoded(t, result.Receipts)) {
+			t.Fatal("unknown metadata changed", e)
+		}
+		r, c := result.Receipts.Measurement, result.Receipts.Cleanup
+		if r.Execution.Status != "unknown" || r.Execution.FailureCategory != "unknown" || r.Execution.ExitCode != nil || r.Quality != (Quality{"unknown", "none"}) || r.ReservationCeiling.CPUSeconds != 1800 || result.ExecutionAuthorized || result.CleanupTrusted || result.ActualResourceAccepted || c.Outcome != "unresolved" || !c.Quarantine || !c.ReuseDenied {
+			t.Fatal("unknown promoted or identity/hold changed")
+		}
+		for _, v := range r.MeasuredConsumption {
+			if v.Value != nil || v.Source != "none" {
+				t.Fatal("invented consumption")
+			}
+		}
+		if r.ProviderReportedCharge.Value != nil || r.ProviderReportedCharge.Source != "none" || c.ObservedScopes[1].Deletion != "unknown" || c.ObservedScopes[2].Deletion != "unknown" || c.Termination != "unknown" || c.AccessRevocation != "unknown" {
+			t.Fatal("CPU settlement laundered broader cleanup/billing")
+		}
+		if prefix == "unknown-held-" && r.ConservativeAccounting != (Accounting{0, "reserved", true}) {
+			t.Fatal("full hold changed")
+		}
+		if prefix == "unknown-settled-" && r.ConservativeAccounting != (Accounting{1800, "estimated_upper_bound", false}) {
+			t.Fatal("full charge changed")
+		}
+	}
+	changes := map[string]func(*ReceiptSetV2){
+		"zero":                             func(s *ReceiptSetV2) { s.Measurement.ConservativeAccounting.ChargedCPUSeconds = 0 },
+		"partial":                          func(s *ReceiptSetV2) { s.Measurement.ConservativeAccounting.ChargedCPUSeconds = 1799 },
+		"aggregate":                        func(s *ReceiptSetV2) { s.Measurement.ConservativeAccounting.ChargedCPUSeconds = 21600 },
+		"wrong-provenance":                 func(s *ReceiptSetV2) { s.Measurement.ConservativeAccounting.Provenance = "reserved" },
+		"charged-and-held":                 func(s *ReceiptSetV2) { s.Measurement.ConservativeAccounting.UnresolvedLiability = true },
+		"execution-cleanup-unknown":        func(s *ReceiptSetV2) { s.Cleanup.ObservedScopes[0].Deletion = "unknown" },
+		"execution-cleanup-failed":         func(s *ReceiptSetV2) { s.Cleanup.ObservedScopes[0].Deletion = "failed" },
+		"execution-cleanup-not-applicable": func(s *ReceiptSetV2) { s.Cleanup.ObservedScopes[0].Deletion = "not_applicable" },
+	}
+	for name, change := range changes {
+		t.Run(name, func(t *testing.T) {
+			m, s := sharedV2(t, "unknown-settled-")
+			change(&s)
+			s.Cleanup.RemainingLiabilities = cleanupLiabilitiesV2(s.Cleanup, s.Measurement.ConservativeAccounting.UnresolvedLiability)
+			rehashV2(t, &s)
+			if _, e := invokeV2(t, m, s); e == nil {
+				t.Fatal("invalid CPU settlement accepted")
+			}
+		})
+	}
+	for _, status := range []string{"reserved", "creating", "running"} {
+		m, s := sharedV2(t, "unknown-settled-")
+		s.Measurement.Execution.Status, s.Measurement.Execution.FailureCategory = status, "none"
+		s.Measurement.Execution.ExecutionStarted = status == "running"
+		if _, e := invokeV2(t, m, s); e == nil {
+			t.Fatal("active CPU settlement accepted", status)
+		}
 	}
 }
 

@@ -25,7 +25,7 @@ func TestAssessmentExecutableHasNoStateOrEngineEffects(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	for _, fixture := range []string{"", "v2/", "v2/maximum-", "v2/maximum-settled-"} {
+	for _, fixture := range []string{"", "v2/", "v2/maximum-", "v2/maximum-settled-", "v2/unknown-held-", "v2/unknown-settled-"} {
 		request, e := os.ReadFile("../../internal/assessment/testdata/" + fixture + "validate-request.canonical.json")
 		if e != nil {
 			t.Fatal(e)
