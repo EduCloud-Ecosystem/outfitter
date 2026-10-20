@@ -660,25 +660,54 @@ func TestOwnedSeparateProcessesBlockedWriterCancelAndRace(t *testing.T) {
 			t.Fatal("blocked writer reported drained")
 		}
 	}
+	// A slow or race-instrumented command exit can leave the writer blocked
+	// long enough to fill the bounded observation log. Exercise this state
+	// deliberately; cleanup must remain eligible without rewriting evidence.
+	blocked := f.waitScope(func(s owneddata.Scope) bool { return s.ObservationsSaturated })
+	if len(blocked.Observations) != owneddata.MaxObservations || !blocked.DenyLatched || !blocked.WriterStarted || blocked.ContentCloseConfirmed || blocked.ContentCloseUncertain {
+		t.Fatal("invalid saturated blocked-writer state", blocked)
+	}
+	for _, o := range blocked.Observations {
+		if o.WritersDrained == "observed" || o.ScopeAccessRevocation == "observed" || o.OwnedRemoval == "observed_absent" {
+			t.Fatal("saturated log claimed blocked-writer cleanup", o)
+		}
+	}
+	before, _ := json.Marshal(blocked.Observations)
 	if _, e = os.Stat(filepath.Join(f.root, ready.ScopeID, "payload")); e != nil {
 		t.Fatal("payload removed while writer held", e)
 	}
 	_, _ = input.Write([]byte("abc"))
 	input.Close()
-	if e = cmd.Wait(); e == nil {
-		t.Fatal("cancelled writer succeeded")
+	if e = cmd.Wait(); e == nil || cmd.ProcessState.ExitCode() != 2 {
+		t.Fatal("cancelled writer did not refuse", e)
 	}
-	if stderr.Len() != 0 {
-		t.Fatal(stderr.String())
+	expected, _ := owneddata.CanonicalReply(owneddata.ErrorReply{Schema: owneddata.ErrorSchema, Code: owneddata.ErrDenied.Error()})
+	if !bytes.Equal(output.Bytes(), expected) || stderr.Len() != 0 {
+		t.Fatalf("wrong cancelled-writer reply: stdout=%q stderr=%q", output.Bytes(), stderr.Bytes())
 	}
-	f.waitScope(func(s owneddata.Scope) bool {
-		for _, o := range s.Observations {
-			if o.OwnedRemoval == "observed_absent" {
-				return true
-			}
+	finished := f.scope()
+	after, _ := json.Marshal(finished.Observations)
+	if !finished.ContentCloseConfirmed || finished.ContentCloseUncertain || !finished.WriterStarted || !finished.DenyLatched || !finished.ObservationsSaturated || finished.Reason != "cancelled" || finished.State != "cleanup_unresolved" || !bytes.Equal(before, after) {
+		t.Fatal("drain lost close evidence, changed observations or claimed closure", finished)
+	}
+	if _, e = os.Stat(filepath.Join(f.root, ready.ScopeID)); !os.IsNotExist(e) {
+		t.Fatal("saturation prevented safe removal after confirmed close", e)
+	}
+	for kind, want := range map[string]*owneddata.FilesystemIdentity{"writer": blocked.FilesystemIdentity.WriterLease, "watch": blocked.FilesystemIdentity.WatchLease} {
+		st, e := os.Stat(filepath.Join(f.state, leaseName(ready.ScopeID, kind)))
+		if e != nil || want == nil {
+			t.Fatal("lease tombstone missing", kind, e)
 		}
-		return false
-	})
+		id, e := ledger.FileIdentity(st)
+		if e != nil || id != *want {
+			t.Fatal("lease tombstone identity changed", kind, e)
+		}
+	}
+	status, failure := f.invoke("status", f.control("status", ready), nil, "")
+	if failure.Code != "" || status.State != "cleanup_unresolved" || status.CleanupTrusted || status.ActualResourceAccepted || status.UploadAuthorized || status.ExecutionAuthorized || status.TestPermission != "none" {
+		t.Fatal("saturated cleanup claimed authority or trust", status, failure)
+	}
+	t.Log("blocked writer: payload held through 8 saturated observations; after body/EOF: confirmed close, scope physically absent, same observations and lease tombstones, cleanup_unresolved with all trust/authorization flags false")
 }
 
 func TestOwnedSeparateProcessesRejectBeforeBody(t *testing.T) {
