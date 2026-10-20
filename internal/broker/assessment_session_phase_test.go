@@ -22,7 +22,58 @@ import (
 // against the original session pipe identities, including the watch pipe.
 type executionSessionPhaseProvider struct {
 	*executionTestProvider
-	forbidden []x.FilesystemIdentity
+	forbidden   []x.FilesystemIdentity
+	diagnostics []executionSessionPhaseTrace
+}
+
+type executionSessionPhaseDiagnostic struct {
+	Phase             string `json:"phase"`
+	StartEntered      bool   `json:"start_entered"`
+	CmdStarted        bool   `json:"cmd_started"`
+	ExitKnown         bool   `json:"exit_known"`
+	ExitCode          int    `json:"exit_code"`
+	ElapsedMS         int64  `json:"elapsed_ms"`
+	WaitMS            int64  `json:"wait_ms"`
+	RemainingBeforeMS int64  `json:"remaining_before_ms"`
+	RemainingAfterMS  int64  `json:"remaining_after_ms"`
+	ContextBefore     string `json:"context_before"`
+	ContextAfter      string `json:"context_after"`
+	StartError        string `json:"start_error"`
+	WaitError         string `json:"wait_error"`
+	PipeError         string `json:"pipe_error"`
+}
+type executionSessionPhaseTrace struct {
+	attemptID  string // internal selection only, never serialized or logged
+	diagnostic executionSessionPhaseDiagnostic
+}
+
+func executionSessionDiagnosticMS(n int64) int64 {
+	if n < -125000 {
+		return -125000
+	}
+	if n > 125000 {
+		return 125000
+	}
+	return n
+}
+
+func executionSessionRemaining(ctx context.Context) int64 {
+	if d, ok := ctx.Deadline(); ok {
+		return executionSessionDiagnosticMS(time.Until(d).Milliseconds())
+	}
+	return 0
+}
+
+func (p *executionSessionPhaseProvider) phaseDiagnostics(attempt string) []executionSessionPhaseDiagnostic {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	rows := make([]executionSessionPhaseDiagnostic, 0, 2)
+	for _, row := range p.diagnostics {
+		if row.attemptID == attempt && len(rows) < 2 {
+			rows = append(rows, row.diagnostic)
+		}
+	}
+	return rows
 }
 
 type executionSessionPhaseEnvelope struct {
@@ -188,6 +239,18 @@ func (p *executionSessionPhaseProvider) Start(ctx context.Context, id x.DockerRe
 		p.mu.Unlock()
 		return completion, executionSessionProtocolError
 	}
+	entered := time.Now()
+	diagnostic := executionSessionPhaseDiagnostic{Phase: request.Phase, StartEntered: true, ContextBefore: executionProcessErrorClass(ctx.Err()), ContextAfter: "none", StartError: "none", WaitError: "none", PipeError: "none", RemainingBeforeMS: executionSessionRemaining(ctx)}
+	defer func() {
+		diagnostic.ElapsedMS = executionSessionDiagnosticMS(time.Since(entered).Milliseconds())
+		diagnostic.ContextAfter = executionProcessErrorClass(ctx.Err())
+		diagnostic.RemainingAfterMS = executionSessionRemaining(ctx)
+		p.mu.Lock()
+		if len(p.diagnostics) < 4 {
+			p.diagnostics = append(p.diagnostics, executionSessionPhaseTrace{request.Slot.AttemptID, diagnostic})
+		}
+		p.mu.Unlock()
+	}()
 	p.starts++
 	p.active++
 	if p.active > p.maxActive {
@@ -210,6 +273,7 @@ func (p *executionSessionPhaseProvider) Start(ctx context.Context, id x.DockerRe
 	defer func() {
 		for _, f := range handles {
 			if e := closeFile(f); e != nil {
+				diagnostic.PipeError = executionProcessErrorClass(e)
 				resultErr = executionSessionProtocolError
 			}
 		}
@@ -252,9 +316,11 @@ func (p *executionSessionPhaseProvider) Start(ctx context.Context, id x.DockerRe
 	cmd.WaitDelay = 250 * time.Millisecond
 	started := time.Now().UTC()
 	if e = cmd.Start(); e != nil {
+		diagnostic.StartError = executionProcessErrorClass(e)
 		clear(raw)
 		return completion, e
 	}
+	diagnostic.CmdStarted = true
 	parentErr := closeFile(metaRead)
 	if e = closeFile(priorRead); parentErr == nil {
 		parentErr = e
@@ -270,7 +336,13 @@ func (p *executionSessionPhaseProvider) Start(ctx context.Context, id x.DockerRe
 	}
 	go write(metaWrite, raw)
 	go write(priorWrite, prior)
+	waitStarted := time.Now()
 	waitErr := cmd.Wait()
+	diagnostic.WaitMS = executionSessionDiagnosticMS(time.Since(waitStarted).Milliseconds())
+	diagnostic.WaitError = executionProcessErrorClass(waitErr)
+	if cmd.ProcessState != nil {
+		diagnostic.ExitKnown, diagnostic.ExitCode = true, cmd.ProcessState.ExitCode()
+	}
 	finished := time.Now().UTC()
 	for i := 0; i < 2; i++ {
 		if e = <-writes; e != nil {
@@ -278,6 +350,7 @@ func (p *executionSessionPhaseProvider) Start(ctx context.Context, id x.DockerRe
 		}
 	}
 	clear(raw)
+	diagnostic.PipeError = executionProcessErrorClass(parentErr)
 	completion = assessmentCompletion{ExitCode: int64(cmd.ProcessState.ExitCode()), StartedAt: &started, FinishedAt: &finished}
 	p.mu.Lock()
 	observation := p.resources[request.OwnerName]

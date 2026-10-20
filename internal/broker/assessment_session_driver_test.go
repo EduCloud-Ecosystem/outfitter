@@ -40,6 +40,8 @@ type executionSessionDriver struct {
 	wait                                                                      chan error
 	stderr                                                                    chan error
 	stderrDone                                                                chan struct{}
+	diagnostics                                                               chan executionSessionDiagnostic
+	primaryReplyDeadline                                                      time.Time
 	mu                                                                        sync.Mutex
 	primaryFiller                                                             *os.File
 }
@@ -97,7 +99,7 @@ func executionSessionSpawnDuplicate(source *os.File) (*os.File, error) {
 
 func newExecutionSessionDriver(t *testing.T, options ...executionSessionDriverOptions) *executionSessionDriver {
 	t.Helper()
-	d := &executionSessionDriver{closed: map[*os.File]bool{}, sequence: map[byte]uint64{}, wait: make(chan error, 1), stderr: make(chan error, 1)}
+	d := &executionSessionDriver{closed: map[*os.File]bool{}, sequence: map[byte]uint64{}, wait: make(chan error, 1), stderr: make(chan error, 1), diagnostics: make(chan executionSessionDiagnostic, 2)}
 	// Register TempDir first so endpoint/process cleanup runs before its removal.
 	base := t.TempDir()
 	// Register partial cleanup before constructing any resources.
@@ -263,6 +265,9 @@ func newExecutionSessionDriver(t *testing.T, options ...executionSessionDriverOp
 	if e != nil {
 		t.Fatal(e)
 	}
+	if e = errRead.SetReadDeadline(deadline.Add(5 * time.Second)); e != nil {
+		t.Fatal("private diagnostic deadline", executionProcessErrorClass(e))
+	}
 	// Five extra seconds permit only original-process kill/reap and checked
 	// teardown; child policy/context and every trigger remain capped earlier.
 	ctx, cancel := context.WithDeadline(context.Background(), deadline.Add(5*time.Second))
@@ -294,12 +299,12 @@ func newExecutionSessionDriver(t *testing.T, options ...executionSessionDriverOp
 	d.stderrDone = make(chan struct{})
 	go func() {
 		defer close(d.stderrDone)
-		// Never retain raw child diagnostics. Exceeding the tiny closed channel
-		// bound is a failure; it cannot grow memory or contaminate protocol bytes.
-		n, e := io.Copy(io.Discard, io.LimitReader(errRead, 65537))
-		if n > 65536 {
-			e = executionSessionProtocolError
-		}
+		// Only two validated closed objects can enter this two-slot channel.
+		// Unknown/raw/oversized bytes are bounded and discarded, never logged.
+		e := executionSessionReadDiagnostics(errRead, func(v executionSessionDiagnostic) { d.diagnostics <- v })
+		if e != nil {
+			_ = d.closeFile(errRead)
+		} // checked original reader; no raw drain wait
 		d.stderr <- e
 	}()
 	return d
@@ -370,6 +375,11 @@ func (d *executionSessionDriver) readReply(t *testing.T, lane byte, execute bool
 
 func (d *executionSessionDriver) readReplyUntil(t *testing.T, lane byte, deadline time.Time) []byte {
 	t.Helper()
+	if lane == 'P' {
+		d.mu.Lock()
+		d.primaryReplyDeadline = deadline
+		d.mu.Unlock()
+	}
 	_, out := d.endpoints(lane)
 	if e := out.SetReadDeadline(deadline); e != nil {
 		t.Fatal(e)
@@ -394,6 +404,73 @@ func (d *executionSessionDriver) readReplyUntil(t *testing.T, lane byte, deadlin
 		}
 	}
 	return raw
+}
+
+func (d *executionSessionDriver) logPhaseDiagnostic(t *testing.T, ordinal int) {
+	t.Helper()
+	d.mu.Lock()
+	deadline := d.primaryReplyDeadline
+	d.mu.Unlock()
+	timer := time.NewTimer(time.Until(deadline))
+	defer timer.Stop()
+	var record executionSessionDiagnostic
+	present := false
+	select {
+	case record = <-d.diagnostics:
+		present = true
+	case <-d.stderrDone:
+		select {
+		case record = <-d.diagnostics:
+			present = true
+		default:
+		}
+	case <-timer.C:
+	}
+	if !present || record.AttemptOrdinal != ordinal || !record.valid() {
+		t.Log("phase diagnostics: unavailable_or_invalid")
+		return
+	}
+	// Re-encode only the already validated closed type. No raw stderr survives.
+	raw, e := json.Marshal(record)
+	if e != nil {
+		t.Log("phase diagnostics: unavailable_or_invalid")
+		return
+	}
+	t.Logf("phase diagnostics: %s", raw)
+}
+
+func (d *executionSessionDriver) executeDiagnostic(t *testing.T, raw []byte, c x.Control, scope x.ExecutionScope, a x.AssessmentAttempt, decodeErr error) {
+	t.Helper()
+	category, code := "invalid", "invalid"
+	var result x.Result
+	shape := len(raw) > 1 && x.DecodeClosed(raw[:len(raw)-1], &result, x.MaxReplyBytes) == nil
+	valid := shape && result.Validate() == nil && result.Compute.ReservedCPUSeconds >= 0 && result.Compute.ReservedCPUSeconds <= 30 && result.Compute.ChargedCPUSeconds >= 0 && result.Compute.ChargedCPUSeconds <= 30
+	if valid {
+		category, code = "result", result.Code
+	} else if len(raw) > 1 {
+		var failure x.Error
+		if x.DecodeClosed(raw[:len(raw)-1], &failure, x.MaxReplyBytes) == nil {
+			canonical, e := x.EncodeReply(failure)
+			if e == nil && bytes.Equal(raw, canonical) {
+				category, code = "error", failure.Code
+			}
+		}
+	}
+	t.Logf("execute reply: category=%s code=%s shape=%t valid=%t decoded=%t binding_match=%t slot_match=%t nonce_match=%t scope_generation_match=%t attempt_present=%t", category, code, shape, valid, decodeErr == nil, shape && result.Binding == c.Binding, shape && c.Slot != nil && result.Slot == *c.Slot, shape && c.HandoffNonce != nil && result.HandoffNonce == *c.HandoffNonce, shape && result.ScopeGeneration == scope.Generation, valid && result.Attempt != nil)
+	if valid {
+		t.Logf("execute public metadata: disposition=%s scope_generation=%d reserved=%d charged=%d unresolved=%t trust_match=%t", result.Disposition, result.ScopeGeneration, result.Compute.ReservedCPUSeconds, result.Compute.ChargedCPUSeconds, result.AccountingUnresolved, result.Trust == x.Untrusted())
+		if result.Attempt != nil {
+			t.Logf("execute public attempt: state=%s outcome=%s failure=%s generation=%d", result.Attempt.State, result.Attempt.Outcome, result.Attempt.FailureCode, result.Attempt.Generation)
+		}
+	}
+	// These are later actual Store facts, not an atomic explanation of reply.
+	t.Logf("execute later snapshot: scope_generation=%d normal=%d safety=%d deny=%t attempt_state=%s failure=%s generation=%d normal=%d safety=%d deny=%t serial_clear=%t ownership_closed=%t ownership_uncertain=%t reader_closed=%t reader_uncertain=%t collector_closed=%t collector_uncertain=%t", scope.Generation, scope.NormalTransitionsUsed, scope.SafetyTransitionsUsed, scope.DenyLatched, a.State, a.FailureCode, a.Generation, a.NormalTransitionsUsed, a.SafetyTransitionsUsed, a.DenyLatched, a.SerialClear(), a.OwnershipCloseConfirmed, a.OwnershipCloseUncertain, a.ReaderCloseConfirmed, a.ReaderCloseUncertain, a.CollectorCloseConfirmed, a.CollectorCloseUncertain)
+	for _, p := range []*x.PhaseRecord{a.PhaseRecords.Workload, a.PhaseRecords.Checker} {
+		if p == nil {
+			continue
+		}
+		t.Logf("execute later phase: phase=%s create_claimed=%t create_returned=%t create_ambiguous=%t start_claimed=%t start_returned=%t started=%t stopped=%t removed=%t transport_closed=%t transport_uncertain=%t exit_known=%t", p.Phase, p.CreateClaimed, p.CreateReturned, p.CreateAmbiguous, p.StartClaimed, p.StartReturned, p.StartedObserved, p.StoppedObserved, p.RemovalObserved, p.TransportCloseConfirmed, p.TransportCloseUncertain, p.ExitCode != nil)
+	}
 }
 
 func (d *executionSessionDriver) finish(t *testing.T) {
@@ -562,6 +639,23 @@ func TestExecutionSessionActualOwnerLifecycleAndInertStage(t *testing.T) {
 		c := x.Control{Schema: x.ControlSchema, Operation: "execute", Binding: d.binding, ExpectedGeneration: &generation, AdmittingOwnerEpoch: &d.config.OwnerEpoch, Slot: &slot, HandoffNonce: &nonce}
 		d.stage(t, 'P', c)
 		raw = d.trigger(t, 'P', true)
+		// Capture closed reply classification and original child observations
+		// before any later Store read can fail or trigger checked test teardown.
+		category, code := "invalid", "invalid"
+		var closedResult x.Result
+		if len(raw) > 1 && x.DecodeClosed(raw[:len(raw)-1], &closedResult, x.MaxReplyBytes) == nil && closedResult.Validate() == nil {
+			category, code = "result", closedResult.Code
+		} else if len(raw) > 1 {
+			var failure x.Error
+			if x.DecodeClosed(raw[:len(raw)-1], &failure, x.MaxReplyBytes) == nil {
+				canonical, err := x.EncodeReply(failure)
+				if err == nil && bytes.Equal(raw, canonical) {
+					category, code = "error", failure.Code
+				}
+			}
+		}
+		t.Logf("execute before snapshot: ordinal=%d category=%s code=%s", i+1, category, code)
+		d.logPhaseDiagnostic(t, i+1)
 		var attempt x.AssessmentAttempt
 		scope := d.scope(t)
 		e = d.store.View(func(data ledger.Data) error { attempt = data.AssessmentExecution.Attempts[slot.AttemptID]; return nil })
@@ -569,6 +663,7 @@ func TestExecutionSessionActualOwnerLifecycleAndInertStage(t *testing.T) {
 			t.Fatal(e)
 		}
 		r, e := x.DecodeResult(raw, c, scope, &attempt)
+		d.executeDiagnostic(t, raw, c, scope, attempt, e)
 		if e != nil || r.Code != "OK" || r.Disposition != "new_attempt" || r.Attempt == nil || r.Attempt.Outcome != "succeeded" || !attempt.SerialClear() || r.Trust != x.Untrusted() || r.Compute.ReservedCPUSeconds != 30 || r.Compute.ChargedCPUSeconds != 30 || r.AccountingUnresolved {
 			t.Fatal("actual original-owner phase result", executionProcessErrorClass(e))
 		}

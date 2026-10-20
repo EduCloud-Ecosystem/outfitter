@@ -157,3 +157,20 @@ Python single-call trigger or parent current-authorization/publication fence.
 The two new shared fixture files contain only the fixed A2 manifest and public
 synthetic canary body; their package-integrity pins are not runtime input hashes
 or authority evidence. No standalone helper binary is built implicitly.
+
+The test helper may emit at most two closed private phase-diagnostic objects,
+each at most 8192 bytes, within its existing 65536-byte stderr bound. Only fixed
+ordinals, phase names, booleans, bounded exit codes and timing observations, and
+closed error or context classes are permitted. The parent validates and re-encodes these
+objects; raw replies, content, output, paths, identifiers and errors are never
+logged as a fallback. These observations supply no authority, measurement or
+cleanup proof. The separate expiry test trace is limited to sixteen fixed
+stage counters and two snapshots totaling at most 8192 bytes.
+
+Positive watcher/overflow controls use one absolute twenty-second caller budget:
+at most ten seconds for actual live Start readiness, five for active assertions
+and four for original-owner drain, within the unchanged thirty-second attempt
+reservation. No provider context is replaced or renewed. A single trace pass
+near the drain limit does not explain an earlier failure or qualify cleanup
+latency. Failed controls and unknown historical causes remain visible; source
+acceptance is separate from host and whole-service qualification.

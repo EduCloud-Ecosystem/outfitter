@@ -3,11 +3,13 @@ package broker
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -18,6 +20,72 @@ import (
 	"github.com/EduCloud-Ecosystem/outfitter/internal/ledger"
 	"github.com/EduCloud-Ecosystem/outfitter/internal/owneddata"
 )
+
+type executionDiagnosticCountReader struct {
+	input io.Reader
+	bytes int
+}
+
+func (r *executionDiagnosticCountReader) Read(p []byte) (int, error) {
+	n, e := r.input.Read(p)
+	r.bytes += n
+	return n, e
+}
+
+func TestExecutionSessionDiagnosticClosedBoundsAndPoison(t *testing.T) {
+	first := executionSessionDiagnostic{executionSessionDiagnosticSchema, 1, []executionSessionPhaseDiagnostic{}}
+	second := first
+	second.AttemptOrdinal = 2
+	encode := func(v executionSessionDiagnostic) string {
+		raw, e := json.Marshal(v)
+		if e != nil {
+			t.Fatal("fixed diagnostic fixture encoding")
+		}
+		return string(raw) + "\n"
+	}
+	one, two := encode(first), encode(second)
+	poison := first
+	poison.Phases = []executionSessionPhaseDiagnostic{{Phase: "PRIVATE_OUTPUT_POISON", StartEntered: true, ContextBefore: "none", ContextAfter: "none", StartError: "none", WaitError: "none", PipeError: "none"}}
+	unknown := strings.TrimSuffix(one, "}\n") + `,"path":"PRIVATE_INPUT_POISON"}` + "\n"
+	signed := first
+	signed.Phases = []executionSessionPhaseDiagnostic{{Phase: "workload", StartEntered: true, CmdStarted: true, ExitKnown: true, ExitCode: -1, ElapsedMS: 300, WaitMS: 200, RemainingBeforeMS: 100, RemainingAfterMS: -200, ContextBefore: "none", ContextAfter: "deadline", StartError: "none", WaitError: "exit", PipeError: "none"}}
+	outOfRange := signed
+	outOfRange.Phases = append([]executionSessionPhaseDiagnostic(nil), signed.Phases...)
+	outOfRange.Phases[0].ExitCode = 256
+	for _, c := range []struct {
+		name, raw string
+		accepted  int
+		valid     bool
+	}{
+		{"two-closed-records", one + two, 2, true},
+		{"signed-bounded-observations", encode(signed), 1, true},
+		{"raw-poison", "PRIVATE_STDERR_POISON\n", 0, false},
+		{"unknown-key", unknown, 0, false},
+		{"poison-enum", encode(poison), 0, false},
+		{"out-of-range", encode(outOfRange), 0, false},
+		{"duplicate-key", `{"schema":"invalid",` + one[1:], 0, false},
+		{"duplicate-ordinal", one + one, 1, false},
+		{"third-object", one + two + one, 2, false},
+		{"truncated", strings.TrimSuffix(one, "\n"), 0, false},
+		{"line-bound", strings.Repeat("x", 8193) + "\n", 0, false},
+		{"total-bound", strings.Repeat("x", 70000), 0, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := &executionDiagnosticCountReader{input: strings.NewReader(c.raw)}
+			accepted := 0
+			e := executionSessionReadDiagnostics(r, func(d executionSessionDiagnostic) {
+				accepted++
+				raw, err := json.Marshal(d)
+				if err != nil || strings.Contains(string(raw), "POISON") {
+					t.Error("diagnostic parser forwarded private content")
+				}
+			})
+			if (e == nil) != c.valid || accepted != c.accepted || r.bytes > 65536 {
+				t.Fatal("closed diagnostic stream accepted invalid shape or exceeded bound")
+			}
+		})
+	}
+}
 
 func TestExecutionSessionOriginalCleanupReturnDiffersFromWatchEOF(t *testing.T) {
 	d := newExecutionSessionDriver(t, executionSessionDriverOptions{cleanupOrder: true})

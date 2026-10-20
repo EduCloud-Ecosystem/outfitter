@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	_ "embed"
@@ -129,25 +130,111 @@ func executionSessionConfigRead(path string) (executionSessionConfig, error) {
 }
 
 type executionSessionOwner struct {
-	broker          *Broker
-	config          executionSessionConfig
-	binding         x.ScopeBinding
-	files           [9]*os.File
-	root, stateRoot *os.Root
-	transport       *executionSessionTransport
-	context         context.Context
-	cancel          context.CancelFunc
-	watchResult     error
-	watchReturned   chan struct{}
-	cleanupOrder    *executionSessionCleanupOrder
-	mu              sync.Mutex
-	watchLaunched   bool
-	setupLent       bool
-	prepareFailed   bool
-	prepared        bool
-	primaryDone     bool
-	finalStatus     bool
-	safetyUsed      map[string]int
+	broker            *Broker
+	phaseProvider     *executionSessionPhaseProvider
+	diagnosticObjects int
+	config            executionSessionConfig
+	binding           x.ScopeBinding
+	files             [9]*os.File
+	root, stateRoot   *os.Root
+	transport         *executionSessionTransport
+	context           context.Context
+	cancel            context.CancelFunc
+	watchResult       error
+	watchReturned     chan struct{}
+	cleanupOrder      *executionSessionCleanupOrder
+	mu                sync.Mutex
+	watchLaunched     bool
+	setupLent         bool
+	prepareFailed     bool
+	prepared          bool
+	primaryDone       bool
+	finalStatus       bool
+	safetyUsed        map[string]int
+}
+
+// The only diagnostic carrier is the existing private owner stderr. These two
+// closed records contain no strings derived from paths, errors or phase output.
+type executionSessionDiagnostic struct {
+	Schema         string                            `json:"schema"`
+	AttemptOrdinal int                               `json:"attempt_ordinal"`
+	Phases         []executionSessionPhaseDiagnostic `json:"phases"`
+}
+
+const executionSessionDiagnosticSchema = "outfitter.private-session-diagnostic/v1"
+
+func executionSessionDiagnosticClass(s string) bool {
+	switch s {
+	case "none", "canceled", "deadline", "wait_delay", "short_write", "exit", "os", "other":
+		return true
+	}
+	return false
+}
+
+func executionSessionDiagnosticContext(s string) bool {
+	return s == "none" || s == "canceled" || s == "deadline"
+}
+
+func (d executionSessionDiagnostic) valid() bool {
+	if d.Schema != executionSessionDiagnosticSchema || d.AttemptOrdinal < 1 || d.AttemptOrdinal > 2 || d.Phases == nil || len(d.Phases) > 2 {
+		return false
+	}
+	for i, p := range d.Phases {
+		if p.Phase != []string{"workload", "checker"}[i] || !p.StartEntered || p.CmdStarted && !p.StartEntered || p.ExitKnown && !p.CmdStarted || p.ExitCode < -1 || p.ExitCode > 255 || !p.ExitKnown && p.ExitCode != 0 || p.ElapsedMS < 0 || p.ElapsedMS > 125000 || p.WaitMS < 0 || p.WaitMS > 125000 || p.RemainingBeforeMS < -125000 || p.RemainingBeforeMS > 125000 || p.RemainingAfterMS < -125000 || p.RemainingAfterMS > 125000 || !executionSessionDiagnosticContext(p.ContextBefore) || !executionSessionDiagnosticContext(p.ContextAfter) || !executionSessionDiagnosticClass(p.StartError) || !executionSessionDiagnosticClass(p.WaitError) || !executionSessionDiagnosticClass(p.PipeError) {
+			return false
+		}
+	}
+	return true
+}
+
+func executionSessionReadDiagnostics(input io.Reader, accept func(executionSessionDiagnostic)) error {
+	// Limit the entire raw stream, not just individual parsed lines. Invalid
+	// bytes are discarded and never passed to accept or a diagnostic formatter.
+	limited := io.LimitReader(input, 65536)
+	r := bufio.NewReaderSize(limited, 8193)
+	total, count := 0, 0
+	for {
+		line, e := r.ReadSlice('\n')
+		total += len(line)
+		if e == io.EOF && len(line) == 0 && total < 65536 {
+			return nil
+		}
+		var d executionSessionDiagnostic
+		if e != nil || total >= 65536 || len(line) > 8192 || count >= 2 || len(line) < 2 || owneddata.ClosedJSON(line[:len(line)-1], &d, 8192) != nil || !d.valid() || d.AttemptOrdinal != count+1 {
+			clear(line)
+			return executionSessionProtocolError
+		}
+		count++
+		accept(d)
+	}
+}
+
+func (s *executionSessionOwner) emitPhaseDiagnostic(ctx context.Context, c x.Control) {
+	if c.Slot == nil || s.phaseProvider == nil || s.diagnosticObjects >= 2 {
+		return
+	}
+	ordinal := 0
+	for i, slot := range s.config.Manifest.Reservations {
+		if slot == *c.Slot {
+			ordinal = i + 1
+		}
+	}
+	d := executionSessionDiagnostic{executionSessionDiagnosticSchema, ordinal, s.phaseProvider.phaseDiagnostics(c.Slot.AttemptID)}
+	if !d.valid() {
+		return
+	}
+	raw, e := json.Marshal(d)
+	if e != nil || len(raw)+1 > 8192 {
+		return
+	}
+	s.diagnosticObjects++
+	deadline, ok := ctx.Deadline()
+	if !ok || s.files[2].SetWriteDeadline(executionSessionMinDeadline(deadline, s.transport.deadline)) != nil || ctx.Err() != nil || s.transport.context.Err() != nil {
+		return
+	}
+	// This is outside all authority locks; failure never changes a public reply
+	// or creates an ownership fact. Parent can report diagnostic_absent instead.
+	_ = executionSessionWrite(s.files[2], append(raw, '\n'))
 }
 
 // These gates exist only in the explicit negative child fixture. Both existing
@@ -287,6 +374,7 @@ func newExecutionSessionOwner(c executionSessionConfig, files [9]*os.File, clean
 	if e != nil {
 		return s, e
 	}
+	s.phaseProvider = p
 	b := New(store, nil)
 	a := &assessmentBoundary{owned: o, capability: capability, provider: p, storage: executionTestStorage{}, collector: func(context.Context, x.ExecutionScope) (assessmentCollector, error) {
 		return &executionTestCollector{}, nil
@@ -411,6 +499,7 @@ func (s *executionSessionOwner) dispatch(ctx context.Context, c x.Control) (any,
 	}
 	if c.Operation == "execute" {
 		r, e := s.broker.RunAssessmentOnce(ctx, c)
+		s.emitPhaseDiagnostic(ctx, c)
 		s.mu.Lock()
 		if c.Slot != nil && *c.Slot == s.config.Manifest.Reservations[1] {
 			s.primaryDone = true

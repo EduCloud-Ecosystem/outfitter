@@ -172,22 +172,46 @@ func (b *Broker) RunAssessmentOnce(ctx context.Context, c x.Control) (result x.R
 	if _, e = b.assessmentChangeAttempt(c.Binding, *c.Slot, x.AttemptForward, func(v *x.AssessmentAttempt) error { v.State = "preparing"; return nil }); e != nil {
 		return result, fail("io_uncertain")
 	}
-	if _, e = b.assessmentChangeAttempt(c.Binding, *c.Slot, x.AttemptReader, func(v *x.AssessmentAttempt) error { v.ReaderStarted = true; return nil }); e != nil {
+	if runCtx.Err() != nil {
+		return result, fail("expired")
+	}
+	if _, e = b.assessmentChangeAttempt(c.Binding, *c.Slot, x.AttemptReader, func(v *x.AssessmentAttempt) error {
+		if runCtx.Err() != nil {
+			return x.ErrDenied
+		}
+		v.ReaderStarted = true
+		return nil
+	}); e != nil {
 		return result, fail("io_uncertain")
 	}
 	if _, e = b.assessmentFresh(c.Binding, c.Slot); e != nil {
 		return result, fail("access_ended")
+	}
+	if runCtx.Err() != nil {
+		return result, fail("expired")
 	}
 	f, e := owner.OpenInput()
 	if e != nil {
 		return result, fail("io_uncertain")
 	}
 	input = f
-	if _, e = b.assessmentChangeAttempt(c.Binding, *c.Slot, x.AttemptCollector, func(v *x.AssessmentAttempt) error { v.CollectorStarted = true; return nil }); e != nil {
+	if runCtx.Err() != nil {
+		return result, fail("expired")
+	}
+	if _, e = b.assessmentChangeAttempt(c.Binding, *c.Slot, x.AttemptCollector, func(v *x.AssessmentAttempt) error {
+		if runCtx.Err() != nil {
+			return x.ErrDenied
+		}
+		v.CollectorStarted = true
+		return nil
+	}); e != nil {
 		return result, fail("io_uncertain")
 	}
 	if _, e = b.assessmentFresh(c.Binding, c.Slot); e != nil {
 		return result, fail("access_ended")
+	}
+	if runCtx.Err() != nil {
+		return result, fail("expired")
 	}
 	collector, e = b.assessment.collector(runCtx, s)
 	if e != nil || collector == nil {
@@ -333,7 +357,14 @@ func (b *Broker) assessmentPhase(ctx context.Context, c x.Control, s x.Execution
 		return a.PhaseRecords.Checker
 	}
 	change := func(event x.Event, fn func(*x.PhaseRecord)) error {
+		if event == x.AttemptPhaseForward && ctx.Err() != nil {
+			return x.ErrDenied
+		}
 		_, e := b.assessmentChangeAttempt(c.Binding, *c.Slot, event, func(a *x.AssessmentAttempt) error {
+			// Recheck after journal-lock acquisition; safety publication stays allowed.
+			if event == x.AttemptPhaseForward && ctx.Err() != nil {
+				return x.ErrDenied
+			}
 			p := get(a)
 			if p == nil {
 				return x.ErrHeld
@@ -343,7 +374,13 @@ func (b *Broker) assessmentPhase(ctx context.Context, c x.Control, s x.Execution
 		})
 		return e
 	}
+	if ctx.Err() != nil {
+		return nil, metric, x.ErrDenied
+	}
 	_, e := b.assessmentChangeAttempt(c.Binding, *c.Slot, x.AttemptPhase, func(a *x.AssessmentAttempt) error {
+		if ctx.Err() != nil {
+			return x.ErrDenied
+		}
 		p := &x.PhaseRecord{Phase: phase, OwnerName: x.ResourceName(c.Binding.BrokerAuthorityID, c.Slot.AttemptID, phase)}
 		if phase == "workload" {
 			a.PhaseRecords.Workload = p
@@ -360,6 +397,11 @@ func (b *Broker) assessmentPhase(ctx context.Context, c x.Control, s x.Execution
 	}
 	if _, e = b.assessmentFresh(c.Binding, c.Slot); e != nil {
 		return nil, metric, e
+	}
+	// Fresh/journal work may consume the caller deadline. A committed claim
+	// remains unresolved if this last negative gate suppresses its callback.
+	if ctx.Err() != nil {
+		return nil, metric, x.ErrDenied
 	}
 	transport, e := b.assessment.transport(ctx, s, phase)
 	constructorUncertain := e != nil || transport == nil
@@ -388,6 +430,9 @@ func (b *Broker) assessmentPhase(ctx context.Context, c x.Control, s x.Execution
 		_ = change(x.AttemptPhaseSafety, func(p *x.PhaseRecord) { p.TransportCloseUncertain = true })
 		return nil, metric, x.ErrHeld
 	}
+	if ctx.Err() != nil {
+		return nil, metric, x.ErrDenied
+	}
 	if e = b.assessment.storage.BeforePhase(ctx, s, phase); e != nil {
 		return nil, metric, x.ErrHeld
 	}
@@ -405,6 +450,9 @@ func (b *Broker) assessmentPhase(ctx context.Context, c x.Control, s x.Execution
 	if e != nil {
 		return nil, metric, e
 	}
+	if ctx.Err() != nil {
+		return nil, metric, x.ErrDenied
+	}
 	resource, e := b.assessment.provider.Create(ctx, req)
 	if e != nil {
 		_ = change(x.AttemptPhaseSafety, func(p *x.PhaseRecord) { p.CreateAmbiguous = true })
@@ -414,6 +462,8 @@ func (b *Broker) assessmentPhase(ctx context.Context, c x.Control, s x.Execution
 		_ = change(x.AttemptPhaseSafety, func(p *x.PhaseRecord) { p.CreateAmbiguous = true })
 		return nil, metric, x.ErrHeld
 	}
+	// Publish the actual successful Create and exact identity even if the caller
+	// canceled during Create; original cleanup still needs these safety facts.
 	if e = change(x.AttemptPhaseSafety, func(p *x.PhaseRecord) { p.CreateReturned = true }); e != nil {
 		return nil, metric, e
 	}
@@ -427,6 +477,9 @@ func (b *Broker) assessmentPhase(ctx context.Context, c x.Control, s x.Execution
 		return nil, metric, e
 	}
 	capture = &assessmentCapture{budget: budget}
+	if ctx.Err() != nil {
+		return nil, metric, x.ErrDenied
+	}
 	completion, e := b.assessment.provider.Start(ctx, resource, input, prior, assessmentCaptureWriter{capture, false}, assessmentCaptureWriter{capture, true})
 	capture.mu.Lock()
 	capture.sealed = true

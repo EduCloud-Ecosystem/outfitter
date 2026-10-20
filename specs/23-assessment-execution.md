@@ -137,6 +137,16 @@ Waypoint handoff orders revocation-before-handoff (refuse) versus later revocati
 (cancel the already authorized attempt). Broker checks immediately before every
 effect. This is not distributed atomic zero-start after a later revocation.
 
+Caller cancellation is a separate negative check from current authority,
+lifelines and the reserved deadline. Check it before and inside forward
+reader/collector and phase claims, and after the last blocking check before
+opening input, constructing a collector/transport or invoking Create/Start.
+Cancellation after that final sample can still race with the callback. A
+committed claim is never erased when its callback is suppressed: an unconstructed
+nil handle is not a close confirmation. Actually returned handles and successful
+Create identities remain registered for checked original-owner cleanup even
+when the caller has ended. Cancellation must not suppress that safety work.
+
 ## Finite transitions and lost acknowledgements
 
 Scope starts at generation 1, normal counter 0 and safety counter 0; generation
