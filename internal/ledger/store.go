@@ -11,10 +11,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/EduCloud-Ecosystem/outfitter/internal/assessmentexec"
 	"github.com/EduCloud-Ecosystem/outfitter/internal/owneddata"
 	"github.com/EduCloud-Ecosystem/outfitter/internal/provider"
 )
@@ -29,19 +31,24 @@ type Project struct {
 	Budget int64  `json:"budget_cpu_seconds"`
 }
 type Data struct {
-	OwnedDataScopes   *map[string]owneddata.Scope `json:"owned_data_scopes,omitempty"`
-	OwnedDataIdentity *OwnedDataIdentity          `json:"owned_data_identity,omitempty"`
-	NativeAccounts    map[string]NativeAccount    `json:"native_accounts,omitempty"`
-	NativeRuns        map[string]NativeRecord     `json:"native_runs,omitempty"`
-	Version           int                         `json:"version"`
-	Owner             string                      `json:"owner"`
-	Authority         *Authority                  `json:"authority,omitempty"`
-	Projects          map[string]Project          `json:"projects"`
-	Runs              map[string]provider.Record  `json:"runs"`
+	AssessmentExecution *assessmentexec.Authority   `json:"assessment_execution,omitempty"`
+	OwnedDataScopes     *map[string]owneddata.Scope `json:"owned_data_scopes,omitempty"`
+	OwnedDataIdentity   *OwnedDataIdentity          `json:"owned_data_identity,omitempty"`
+	NativeAccounts      map[string]NativeAccount    `json:"native_accounts,omitempty"`
+	NativeRuns          map[string]NativeRecord     `json:"native_runs,omitempty"`
+	Version             int                         `json:"version"`
+	Owner               string                      `json:"owner"`
+	Authority           *Authority                  `json:"authority,omitempty"`
+	Projects            map[string]Project          `json:"projects"`
+	Runs                map[string]provider.Record  `json:"runs"`
 }
 type Store struct {
 	Dir           string
 	ownedIdentity *OwnedDataIdentity
+	// Only package tests install persistence faults. A returned post-rename
+	// error may mean a counted transaction committed; it never permits replay.
+	assessmentWriteFault     func(string) error
+	assessmentOwnershipFault func(string) error
 }
 type Usage struct {
 	ProjectID string `json:"project_id"`
@@ -85,6 +92,9 @@ func Open(dir string, create bool) (*Store, error) {
 		if d.Version == 6 {
 			identity := *d.OwnedDataIdentity
 			s.ownedIdentity = &identity
+		}
+		if d.Version == 7 {
+			s.ownedIdentity = executionIdentity(d)
 		}
 	}
 	e = s.lock(func() error {
@@ -178,9 +188,17 @@ func (s *Store) read() (Data, error) {
 	if dec.Decode(new(any)) != io.EOF {
 		return d, errors.New("trailing ledger data")
 	}
-	if d.Version == 6 {
+	if d.Version == 6 || d.Version == 7 {
 		if e := owneddata.ClosedJSON(raw, &d, maxLedgerBytes); e != nil {
 			return d, e
+		}
+	}
+	if d.Version == 7 {
+		var envelope struct {
+			AssessmentExecution json.RawMessage `json:"assessment_execution"`
+		}
+		if json.Unmarshal(raw, &envelope) != nil || assessmentexec.DecodeClosed(envelope.AssessmentExecution, d.AssessmentExecution, maxLedgerBytes) != nil {
+			return d, assessmentexec.ErrInvalid
 		}
 	}
 	if e = validate(d); e != nil {
@@ -194,10 +212,15 @@ func (s *Store) read() (Data, error) {
 			return d, e
 		}
 	}
+	if d.Version == 7 {
+		if e := s.checkOwnedIdentity(executionIdentity(d)); e != nil {
+			return d, e
+		}
+	}
 	return d, nil
 }
 func validate(d Data) error {
-	if (d.Version != 1 && d.Version != 2 && d.Version != 3 && d.Version != 4 && d.Version != 5 && d.Version != 6) || len(d.Owner) != 32 || d.Projects == nil || d.Runs == nil || len(d.Projects)+len(d.NativeAccounts) > MaxProjects || len(d.Runs)+len(d.NativeRuns)+ownedCount(d) > MaxRecords {
+	if (d.Version != 1 && d.Version != 2 && d.Version != 3 && d.Version != 4 && d.Version != 5 && d.Version != 6 && d.Version != 7) || len(d.Owner) != 32 || d.Projects == nil || d.Runs == nil || len(d.Projects)+len(d.NativeAccounts) > MaxProjects || len(d.Runs)+len(d.NativeRuns)+ownedCount(d)+executionCount(d) > MaxRecords {
 		return errors.New("incomplete or over-capacity ledger")
 	}
 	if e := validatePlacements(d); e != nil {
@@ -210,6 +233,9 @@ func validate(d Data) error {
 		return e
 	}
 	if e := validateOwnedData(d); e != nil {
+		return e
+	}
+	if e := validateAssessmentExecution(d); e != nil {
 		return e
 	}
 	if decoded, e := hex.DecodeString(d.Owner); e != nil || len(decoded) != 16 {
@@ -272,6 +298,12 @@ func validate(d Data) error {
 }
 
 func (s *Store) write(d Data) error {
+	fault := func(point string) error {
+		if d.Version == 7 && s.assessmentWriteFault != nil {
+			return s.assessmentWriteFault(point)
+		}
+		return nil
+	}
 	// Prepare every possible diagnostic outcome before creating sidecars. Later
 	// I/O failure can still leave an orphan; uncertain accounting is never refunded.
 	plan, e := prepareLedgerWrite(d, s.Dir, maxRecordBytes, maxLedgerBytes)
@@ -290,6 +322,9 @@ func (s *Store) write(d Data) error {
 	if len(b) > plan.maximumBytes {
 		return errors.New("authority serialization exceeded prepared diagnostic outcomes")
 	}
+	if e = fault("before_temp"); e != nil {
+		return e
+	}
 	f, e := os.CreateTemp(s.Dir, ".ledger-")
 	if e != nil {
 		return e
@@ -298,6 +333,9 @@ func (s *Store) write(d Data) error {
 	defer os.Remove(name)
 	if e = f.Chmod(0600); e == nil {
 		_, e = f.Write(b)
+	}
+	if e == nil {
+		e = fault("before_file_sync")
 	}
 	if e == nil {
 		e = f.Sync()
@@ -309,7 +347,13 @@ func (s *Store) write(d Data) error {
 	if e != nil {
 		return e
 	}
+	if e = fault("before_rename"); e != nil {
+		return e
+	}
 	if e = os.Rename(name, filepath.Join(s.Dir, "ledger.json")); e != nil {
+		return e
+	}
+	if e = fault("after_rename"); e != nil {
 		return e
 	}
 	dir, e := os.Open(s.Dir)
@@ -317,9 +361,22 @@ func (s *Store) write(d Data) error {
 		return e
 	}
 	defer dir.Close()
-	return dir.Sync()
+	if e = fault("before_directory_sync"); e != nil {
+		return e
+	}
+	if e = dir.Sync(); e != nil {
+		return e
+	}
+	return fault("after_directory_sync")
 }
 func (s *Store) Update(fn func(*Data) error) error {
+	return s.updateAssessment(fn, nil)
+}
+
+func (s *Store) updateAssessment(fn func(*Data) error, completion *assessmentCompletion) error {
+	if completion != nil && completion.store != s {
+		return assessmentexec.ErrDenied
+	}
 	return s.lock(func() error {
 		d, e := s.read()
 		if e != nil {
@@ -328,6 +385,7 @@ func (s *Store) Update(fn func(*Data) error) error {
 		experiments := nativeExperimentGuards(d)
 		placements := placementGuards(d)
 		owned := captureOwnedGuard(d)
+		execution := captureExecutionGuard(d)
 		if e = fn(&d); e != nil {
 			return e
 		}
@@ -339,6 +397,12 @@ func (s *Store) Update(fn func(*Data) error) error {
 		}
 		if e = preserveOwnedGuard(owned, d); e != nil {
 			return e
+		}
+		if e = preserveExecutionGuard(execution, d, completion); e != nil {
+			return e
+		}
+		if d.Version == 7 && execution.authority != nil && reflect.DeepEqual(*execution.authority, *d.AssessmentExecution) {
+			return nil
 		}
 		return s.write(d)
 	})
@@ -385,6 +449,18 @@ func Calculate(d Data, id string) Usage {
 		}
 		if r.UnresolvedLiability {
 			u.Unknown += r.Compute.Reserved
+		}
+	}
+	if d.AssessmentExecution != nil {
+		for _, a := range d.AssessmentExecution.Attempts {
+			if a.Binding.ProjectID != id {
+				continue
+			}
+			u.Charged += a.Compute.ChargedCPUSeconds
+			if a.AccountingUnresolved {
+				u.Reserved += a.Compute.ReservedCPUSeconds
+				u.Unknown += a.Compute.ReservedCPUSeconds
+			}
 		}
 	}
 	u.Remaining = u.Budget - u.Charged - u.Reserved

@@ -535,7 +535,7 @@ func (s *Store) Activate(source, dir, digest string) (RecoveryReport, error) {
 func (s *Store) activate(source, dir, digest string, afterFence func() error) (RecoveryReport, error) {
 	var out RecoveryReport
 	if e := s.View(func(d Data) error {
-		if d.Version == 6 {
+		if d.Version == 6 || d.Version == 7 {
 			return ErrOwnedDataOnly
 		}
 		return nil
@@ -551,7 +551,7 @@ func (s *Store) activate(source, dir, digest string, afterFence func() error) (R
 		return out, e
 	}
 	if e := src.View(func(d Data) error {
-		if d.Version == 6 {
+		if d.Version == 6 || d.Version == 7 {
 			return ErrOwnedDataOnly
 		}
 		return nil
