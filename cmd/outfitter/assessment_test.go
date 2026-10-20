@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestAssessmentExecutableHasNoStateOrEngineEffects(t *testing.T) {
@@ -79,5 +81,43 @@ func TestAssessmentExecutableHasNoStateOrEngineEffects(t *testing.T) {
 				}
 			}
 		}
+	}
+	for index, poison := range []string{"SECRET_POISON_LEDGER", `{"schema_version":6}`, `{"version":6}`} {
+		state := t.TempDir()
+		ledger := filepath.Join(state, "ledger.json")
+		if e := os.WriteFile(ledger, []byte(poison), 0600); e != nil {
+			t.Fatal(e)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		cmd := exec.CommandContext(ctx, binary, "--state-dir", state, "assessment-receipts")
+		cmd.Dir, cmd.Env = work, []string{"PATH=" + bin}
+		stdin, e := cmd.StdinPipe()
+		if e != nil {
+			cancel()
+			t.Fatal(e)
+		}
+		var out, errout bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &out, &errout
+		// Keep stdin open with no body: argument refusal cannot wait for input.
+		e = cmd.Run()
+		_ = stdin.Close()
+		deadline := ctx.Err()
+		cancel()
+		if e == nil || deadline != nil || errout.Len() != 0 || out.String() != "{\"error\":\"INVALID_ASSESSMENT_ARGUMENTS\"}\n" {
+			t.Errorf("existing ledger probed or stdin consumed before argument refusal: exit=%v deadline=%v out=%q stderr=%q", e, deadline, out.String(), errout.String())
+		}
+		entries, e := os.ReadDir(state)
+		if e != nil || len(entries) != 1 || entries[0].Name() != "ledger.json" {
+			t.Errorf("argument refusal changed ledger tree or created a lock: %v %v", e, entries)
+		}
+		after, e := os.ReadFile(ledger)
+		if e != nil || !bytes.Equal(after, []byte(poison)) {
+			t.Errorf("argument refusal changed ledger bytes: %v", e)
+		}
+		entries, e = os.ReadDir(work)
+		if e != nil || len(entries) != 0 {
+			t.Errorf("argument refusal touched working directory or engine: %v %v", e, entries)
+		}
+		t.Logf("existing ledger variant %d: held-open stdin, fixed argument refusal, unchanged ledger bytes/tree, no lock or engine effects checked", index)
 	}
 }

@@ -50,6 +50,14 @@ func execute() error {
 		return errors.New("usage: outfitter --state-dir PRIVATE_PATH COMMAND")
 	}
 	command := args[0]
+	// The pure metadata command must reject state/extra arguments before any
+	// ledger probe, lock acquisition, provider construction, or stdin read.
+	if command == "assessment-receipts" {
+		if *state != "" || len(args) != 1 {
+			return errors.New("INVALID_ASSESSMENT_ARGUMENTS")
+		}
+		return assessment.Serve(os.Stdin, os.Stdout)
+	}
 	// Refuse the assessment-only authority before request/config reads or any
 	// provider construction, including the early Jetstream2 command branches.
 	if *state != "" {
@@ -84,12 +92,6 @@ func execute() error {
 				}
 			}
 		}
-	}
-	if command == "assessment-receipts" {
-		if *state != "" || len(args) != 1 {
-			return errors.New("INVALID_ASSESSMENT_ARGUMENTS")
-		}
-		return assessment.Serve(os.Stdin, os.Stdout)
 	}
 	if command == "jetstream2-reap" {
 		return jetstreamReap(*state, args[1:])
