@@ -36,9 +36,17 @@ def complete(gate, names):
 class ParserControls(unittest.TestCase):
     def test_real_projection_is_complete_and_disjoint(self):
         selection = ci.partition(list(ci.EXPECTED_BROKER))
-        self.assertEqual([len(g) for g in selection["groups"]], [53, 45])
+        self.assertEqual([len(g) for g in selection["groups"]], [54, 45])
         self.assertFalse(set(selection["groups"][0]) & set(selection["groups"][1]))
         self.assertEqual(set().union(*map(set, selection["groups"])), set(ci.EXPECTED_BROKER))
+        parent = "TestExecutionFinalizeLateUncertaintyKeepsHeld"
+        self.assertEqual(ci.EXPECTED_BROKER.count(parent), 1)
+        self.assertEqual(selection["groups"][0].count(parent), 1)
+        self.assertNotIn(parent, selection["groups"][1])
+        position = ci.EXPECTED_BROKER.index(parent)
+        self.assertEqual(ci.EXPECTED_BROKER[position - 1:position + 2],
+                         ("TestExecutionConnectedTwoPhaseOnceAndNonretention", parent,
+                          "TestExecutionOwnershipPositiveLifecycleAndCleanup"))
 
     def test_only_named_cleanup_parent_moves_and_owned_group_stays_whole(self):
         moved = "TestExecutionCleanupLateUncertaintyCannotPublishAbsence"
