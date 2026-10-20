@@ -1101,4 +1101,25 @@ func TestOwnedAuthorityRefusesOrdinaryReconciliationBeforeProvider(t *testing.T)
 	if _, _, e = b.Reserve(provider.Request{}); e == nil {
 		t.Fatal("ordinary reserve accepted v6")
 	}
+	// A nil provider makes any attempted provider method an immediate failure.
+	// These direct API controls cover more than the CLI's early dispatcher.
+	b = New(s, nil)
+	if _, e = b.Reconcile("prior-unresolved"); e == nil {
+		t.Fatal("nil-provider reconciliation admitted")
+	}
+	if _, e = b.Cancel("prior-unresolved", "cancel"); e == nil {
+		t.Fatal("nil-provider cancellation admitted")
+	}
+	if _, e = b.Run(context.Background(), provider.Request{}); e == nil {
+		t.Fatal("nil-provider run admitted")
+	}
+	if _, _, e = b.RunOnce(context.Background(), provider.Request{}); e == nil {
+		t.Fatal("nil-provider run-once admitted")
+	}
+	if receipts, e := b.Reap(); e != nil || len(receipts) != 0 {
+		t.Fatal("owned-only reap touched legacy compute", e)
+	}
+	if e = b.Watch(context.Background(), "prior-unresolved"); e == nil {
+		t.Fatal("owned-only watch accepted legacy compute")
+	}
 }
