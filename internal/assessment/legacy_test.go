@@ -1,8 +1,10 @@
-package assessment
+package assessment_test
 
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -11,11 +13,66 @@ import (
 	"strings"
 	"testing"
 
+	a "github.com/EduCloud-Ecosystem/outfitter/internal/assessment"
 	"github.com/EduCloud-Ecosystem/outfitter/internal/broker"
 	"github.com/EduCloud-Ecosystem/outfitter/internal/consumer"
 	"github.com/EduCloud-Ecosystem/outfitter/internal/ledger"
 	"github.com/EduCloud-Ecosystem/outfitter/internal/provider"
 )
+
+// The integration fixture stays outside package assessment so its Broker
+// dependency cannot cycle back through the execution codec. Internal codec
+// tests receive this same real receipt fixture during external test init.
+func init() { a.RegisterLegacyReceiptFixtureForTest(successfulReceipt) }
+
+func invoke(t *testing.T, request any) (a.Result, error) {
+	t.Helper()
+	var out bytes.Buffer
+	e := a.Serve(bytes.NewReader(encoded(t, request)), &out)
+	var result a.Result
+	if e == nil {
+		if e := json.Unmarshal(out.Bytes(), &result); e != nil {
+			t.Fatal(e)
+		}
+	} else if out.Len() != 0 || len(e.Error()) > 64 || strings.Contains(e.Error(), "SECRET") {
+		t.Fatal("input leaked or partial success emitted", e)
+	}
+	return result, e
+}
+func projectRequest(t *testing.T, source any) any {
+	t.Helper()
+	r, e := a.DecodeLegacy(encoded(t, source))
+	if e != nil {
+		t.Fatal(e)
+	}
+	raw, e := os.ReadFile("testdata/benchmark-manifest.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	m, e := a.DecodeManifest(raw)
+	if e != nil {
+		t.Fatal(e)
+	}
+	raw, e = os.ReadFile("testdata/receipt-set.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	s, e := a.DecodeReceipts(raw)
+	if e != nil {
+		t.Fatal(e)
+	}
+	m.ProjectID, m.Workload.Image = r.ProjectID, r.Image
+	m.Reservations[0].AttemptID, m.Reservations[0].ReservationID = r.RequestID, r.RequestID
+	b := s.Measurement.Binding
+	b.ProjectID, b.Image, b.AttemptID, b.ReservationID = r.ProjectID, r.Image, r.RequestID, r.RequestID
+	canonical, e := a.Canonical(m)
+	if e != nil {
+		t.Fatal(e)
+	}
+	digest := sha256.Sum256(canonical)
+	b.ManifestSHA256 = hex.EncodeToString(digest[:])
+	return map[string]any{"operation": "project_legacy", "manifest": m, "binding": b, "cleanup_receipt_id": "cleanup-1", "source_receipt": source}
+}
 
 type receiptFake struct {
 	createError, runError, cleanupError bool
@@ -145,7 +202,7 @@ func TestExistingBrokerLifecycleReceiptsAcceptedWithoutAccountingChanges(t *test
 			if e != nil {
 				t.Fatal(e)
 			}
-			got, e := DecodeLegacy(encoded(t, r))
+			got, e := a.DecodeLegacy(encoded(t, r))
 			if e != nil || got.Compute != r.Compute || got.UnresolvedLiability != r.UnresolvedLiability || got.CancelRequested != r.CancelRequested || got.Status != r.Status {
 				t.Fatal("legacy semantics changed", got, e)
 			}
@@ -188,7 +245,7 @@ func TestExistingConsumerReceiptAndDuplicateRemainOneAttempt(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		got, e := DecodeLegacy(encoded(t, r))
+		got, e := a.DecodeLegacy(encoded(t, r))
 		if e != nil || got.Consumer != req.Consumer || got.Attempt != 1 || got.GradePublished || got.Reused != (i == 1) || p.creates != 1 || got.Compute.Charged != 30 {
 			t.Fatal(got, e, p.creates)
 		}
@@ -238,7 +295,7 @@ func TestLegacyTypedJSONAttacksFailWithoutEchoingInput(t *testing.T) {
 		"unknown":    append([]byte(`{"secret_field":"SECRET_ATTACK",`), raw[1:]...),
 		"case alias": bytes.ReplaceAll(raw, []byte(`"admitted":true`), []byte(`"Admitted":true`)),
 		"trailing":   append(append([]byte{}, raw...), []byte(` {"secret":"SECRET_ATTACK"}`)...),
-		"oversized":  []byte(strings.Repeat(" ", MaxLegacyBytes+1)),
+		"oversized":  []byte(strings.Repeat(" ", a.MaxLegacyBytes+1)),
 	}
 	for _, value := range []string{"null", "true", "1.0", "1e0", "9007199254740992", "-1", `"SECRET_ATTACK"`} {
 		attacks["numeric "+value] = bytes.ReplaceAll(raw, []byte(`"schema_version":1`), []byte(`"schema_version":`+value))
@@ -255,7 +312,7 @@ func TestLegacyTypedJSONAttacksFailWithoutEchoingInput(t *testing.T) {
 	}
 	for name, payload := range attacks {
 		t.Run(name, func(t *testing.T) {
-			_, e := DecodeLegacy(payload)
+			_, e := a.DecodeLegacy(payload)
 			if e == nil || e.Error() != "INVALID_LEGACY_RECEIPT" {
 				t.Fatal("attack accepted or error echoed input", e)
 			}
