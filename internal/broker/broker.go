@@ -27,6 +27,7 @@ type Broker struct {
 	Provider      provider.Provisioner
 	StartWatchdog func(string) error
 	owned         *ownedBoundary
+	assessment    *assessmentBoundary
 }
 
 func New(s *ledger.Store, p provider.Provisioner) *Broker { return &Broker{Store: s, Provider: p} }
@@ -34,7 +35,7 @@ func (b *Broker) Reserve(w provider.Request) (provider.Record, bool, error) {
 	var r provider.Record
 	fresh := false
 	if e := b.Store.View(func(d ledger.Data) error {
-		if d.Version == 6 {
+		if d.Version == 6 || d.Version == 7 {
 			return ledger.ErrOwnedDataOnly
 		}
 		return nil
@@ -120,7 +121,7 @@ func (b *Broker) Reserve(w provider.Request) (provider.Record, bool, error) {
 func (b *Broker) change(id string, fn func(*provider.Record)) (provider.Record, error) {
 	var r provider.Record
 	e := b.Store.Update(func(d *ledger.Data) error {
-		if d.Version == 6 {
+		if d.Version == 6 || d.Version == 7 {
 			return ledger.ErrOwnedDataOnly
 		}
 		var ok bool
@@ -345,7 +346,7 @@ func Alive(pid int) bool {
 }
 func (b *Broker) Reconcile(id string) (provider.Receipt, error) {
 	if e := b.Store.View(func(d ledger.Data) error {
-		if d.Version == 6 {
+		if d.Version == 6 || d.Version == 7 {
 			return ledger.ErrOwnedDataOnly
 		}
 		return nil
@@ -397,7 +398,7 @@ func (b *Broker) Reap() ([]provider.Receipt, error) {
 	var ids []string
 	var ownedOnly bool
 	e := b.Store.View(func(d ledger.Data) error {
-		if d.Version == 6 {
+		if d.Version == 6 || d.Version == 7 {
 			ownedOnly = true
 			return nil
 		}
@@ -432,7 +433,13 @@ func (b *Broker) Reap() ([]provider.Receipt, error) {
 }
 func (b *Broker) Watch(ctx context.Context, id string) error {
 	var ownedOnly bool
-	if e := b.Store.View(func(d ledger.Data) error { ownedOnly = d.Version == 6; return nil }); e != nil {
+	if e := b.Store.View(func(d ledger.Data) error {
+		if d.Version == 7 {
+			return ledger.ErrOwnedDataOnly
+		}
+		ownedOnly = d.Version == 6
+		return nil
+	}); e != nil {
 		return e
 	}
 	if ownedOnly {

@@ -17,7 +17,7 @@ func validatePlacements(d Data) error {
 			}
 			continue
 		}
-		if (d.Version != 5 && d.Version != 6) || p.Validate() != nil || s == nil || seen[*p] {
+		if (d.Version != 5 && d.Version != 6 && d.Version != 7) || p.Validate() != nil || s == nil || seen[*p] {
 			return errors.New("invalid or repeated placement attempt")
 		}
 		seen[*p] = true
@@ -57,7 +57,7 @@ func placementGuards(d Data) map[string]placementGuard {
 func preservePlacements(before map[string]placementGuard, d Data) error {
 	for id, old := range before {
 		r, ok := d.Runs[id]
-		if !ok || r.Request.Placement == nil || r.PlacementState == nil || (d.Version != 5 && d.Version != 6) || r.Request.Hash() != old.hash || r.PayloadHash != old.hash || r.Owner != old.owner || r.Name != old.name || r.ProjectID != old.project || !r.CreatedAt.Equal(old.created) || !r.Deadline.Equal(old.deadline) || r.Compute.Reserved != old.reserved || r.Compute.Charged < old.charged {
+		if !ok || r.Request.Placement == nil || r.PlacementState == nil || (d.Version != 5 && d.Version != 6 && d.Version != 7) || r.Request.Hash() != old.hash || r.PayloadHash != old.hash || r.Owner != old.owner || r.Name != old.name || r.ProjectID != old.project || !r.CreatedAt.Equal(old.created) || !r.Deadline.Equal(old.deadline) || r.Compute.Reserved != old.reserved || r.Compute.Charged < old.charged {
 			return errors.New("offline placement identity/reservation cannot be removed, rebound or refunded")
 		}
 		s := r.PlacementState

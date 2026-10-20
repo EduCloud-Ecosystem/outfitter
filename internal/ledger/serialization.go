@@ -62,6 +62,11 @@ func marshalCompact(d Data, recordLimit, ledgerLimit int) ([]byte, error) {
 	if e := validate(d); e != nil {
 		return nil, e
 	}
+	if reserved, e := assessmentReservedBytes(d); e != nil {
+		return nil, e
+	} else if reserved > ledgerLimit {
+		return nil, errors.New("ASSESSMENT_EXECUTION_METADATA_LIMIT")
+	}
 	for _, r := range d.Runs {
 		if _, e := marshalRecord(r, recordLimit); e != nil {
 			return nil, e

@@ -36,6 +36,9 @@ func main() {
 	}
 }
 func execute() error {
+	if isAssessmentExecutionCommand(os.Args[1:]) {
+		return executeAssessmentExecutionCommand(os.Args[1:], os.Stdin, os.Stdout)
+	}
 	if isOwnedCommand(os.Args[1:]) {
 		return executeOwnedCommand(os.Args[1:], os.Stdin, os.Stdout)
 	}
@@ -90,6 +93,9 @@ func execute() error {
 				default:
 					return ledger.ErrOwnedDataOnly
 				}
+			}
+			if version == 7 {
+				return ledger.ErrOwnedDataOnly
 			}
 		}
 	}
