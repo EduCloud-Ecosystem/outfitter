@@ -194,10 +194,12 @@ func (s *Store) read() (Data, error) {
 		}
 	}
 	if d.Version == 7 {
+		// Whole-Data ClosedJSON above already checked this plain typed
+		// Authority subtree shape. Retain its extra raw lexical/depth rules.
 		var envelope struct {
 			AssessmentExecution json.RawMessage `json:"assessment_execution"`
 		}
-		if json.Unmarshal(raw, &envelope) != nil || assessmentexec.DecodeClosed(envelope.AssessmentExecution, d.AssessmentExecution, maxLedgerBytes) != nil {
+		if json.Unmarshal(raw, &envelope) != nil || assessmentexec.CheckIntegerDepthJSON(envelope.AssessmentExecution, maxLedgerBytes) != nil {
 			return d, assessmentexec.ErrInvalid
 		}
 	}

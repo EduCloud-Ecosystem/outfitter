@@ -25,7 +25,8 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p .runtime
-          go test -race -json ./... | tee .runtime/go-tests.jsonl
+          python3 -B -m unittest discover -s scripts -p test_ci_race_partition.py
+          python3 -B scripts/ci_race_partition.py
           go vet ./...
           test -z "$(gofmt -l cmd internal)"
       - name: Build local broker
@@ -47,6 +48,7 @@ jobs:
           name: docker-acceptance
           path: |
             .runtime/go-tests.jsonl
+            .runtime/ci-race/
             .runtime/docker-ci.json
             .runtime/recovery-ci.json
             .runtime/consumer-ci.json

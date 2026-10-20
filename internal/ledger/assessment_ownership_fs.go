@@ -311,12 +311,8 @@ func (o *AssessmentOperation) ReserveWatch(watchWrite *os.File, guard Assessment
 	// The original parent write endpoint is explicitly setup-owned, distinct
 	// from the duplicate. There is no general-purpose descriptor registration.
 	ph, _ := v.file(watchWrite, nil)
-	fd, e := syscall.Dup(int(watchWrite.Fd()))
-	if e != nil {
-		return nil, e
-	}
-	write := os.NewFile(uintptr(fd), "v7-watch-write")
-	_, e = cv.file(write, nil)
+	write, duplicateErr := assessmentDupCloseOnExec(watchWrite)
+	_, e = cv.file(write, duplicateErr)
 	if e != nil {
 		return nil, e
 	}

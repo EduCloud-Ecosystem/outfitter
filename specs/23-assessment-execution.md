@@ -133,9 +133,30 @@ Only an unambiguous successful write and ACK allow that invocation to continue.
 Readback after uncertainty is observation, never permission to resume effects.
 An identical claim is lookup-only. Different bindings collide; no replay/reopen.
 
+Stop-only rescue distinguishes a new denial publication from an already committed
+absorbing negative. A successful fresh, exact-binding, validated Store view of an
+already denied attempt may plan Stop-only rescue without repeating its unchanged
+denial transaction. This read is not a mutation ACK, permission to resume a claim
+or dispatch, replay, lease adoption, deletion, settlement or close confirmation.
+Every current phase, identity and generation check around Inspect/Stop remains.
+An initially not-denied attempt still requires the new denial's definitive write
+and ACK; any failed or ambiguous acknowledgement skips all provider calls in that
+invocation, without a reread or fallback. The general claim and readback refusal
+rules above remain unchanged.
+
 Waypoint handoff orders revocation-before-handoff (refuse) versus later revocation
 (cancel the already authorized attempt). Broker checks immediately before every
 effect. This is not distributed atomic zero-start after a later revocation.
+
+Caller cancellation is a separate negative check from current authority,
+lifelines and the reserved deadline. Check it before and inside forward
+reader/collector and phase claims, and after the last blocking check before
+opening input, constructing a collector/transport or invoking Create/Start.
+Cancellation after that final sample can still race with the callback. A
+committed claim is never erased when its callback is suppressed: an unconstructed
+nil handle is not a close confirmation. Actually returned handles and successful
+Create identities remain registered for checked original-owner cleanup even
+when the caller has ended. Cancellation must not suppress that safety work.
 
 ## Finite transitions and lost acknowledgements
 
@@ -182,6 +203,16 @@ workload, then independent checker. No fresh checker budget, timer, retry or DAG
 Reader/collector and each phase's transport have write-ahead start markers and
 separate close-confirmed/close-uncertain latches. Uncertainty is sticky.
 
+Event classification may reuse an immutable JSON/UseNumber projection of one
+fixed before/after pair within that synchronous classification only. Candidate
+path erasure must not mutate that pair or any later candidate. This is local
+representation work, not current authority or a cross-operation cache. Store v7
+may reuse the already successful whole-Data closed-shape check for its typed
+Authority subtree, while retaining the same raw-payload integer/depth scan and
+all semantic, state-path and filesystem-identity checks. Public DecodeClosed
+still performs both lexical and full closed-shape validation. No event, ACK,
+physical cleanup, clock, counter, wire or older-version behavior changes.
+
 Checker creation requires workload definitively stopped and removed, no possible
 late create or outstanding create/start ACK, closed workload transport with no
 uncertainty, current scope/lifelines/clock and retained reader exclusion.
@@ -191,6 +222,17 @@ permitted only when all begun phases/handles are closed and checker completion
 or irreversible suppression prevents any further phase. A final confirmation
 permanently forbids reopening. Process exit, free leases or provisional resource
 absence do not prove drain or create finality.
+
+Deferred phase cleanup may omit only a duplicate stopped-state publication when
+that same phase invocation already received the first publication's definitive
+successful acknowledgement. The local fact resets for every phase; an error,
+including a lost acknowledgement, still stops before Remove without reread or
+retry. Entry with an already absent resource retains its first stopped-state
+acknowledgement. Actual Remove, the absence observation, the current removal
+publication and every global/final fresh guard remain required. This omission
+removes a redundant read/callback/clock opportunity; the original no-op already
+spent no semantic event or write/fsync. It grants no dispatch, replay, close,
+accounting, admission or scope-cleanup authority and proves no latency repair.
 
 Input is the single owned sealed file. Fixed recipe/checker code is independently
 identified and never copied with data into snapshots. Combined stdout/stderr is
@@ -211,6 +253,23 @@ explicit; scopes are not silently relabeled for the existing estimator.
 Independent quality failure/uncertainty never becomes eligible fitting evidence.
 
 ## Accounting and serial admission
+
+The original Run's successful final fresh exact scope-and-attempt observation
+may supply both its `SerialClear` check and the pure untrusted public result,
+including scope generation and normalized receipts. This shares only that
+point-in-time observation after actual checked closure; it does not reuse a
+mutation ACK as current state. Held, read-error, mutation/ACK-error and failed
+projection paths retain the independent fresh result observation and existing
+error precedence. A failed projection does not manufacture a finalization error.
+Same-ID lookup remains independently fresh. Scope cleanup always makes its own
+current authority and checked-removal decisions.
+
+A later legal negative can follow any last observation. An earlier public result
+cannot clear that journal history or authorize admission, dispatch or cleanup;
+its untrusted projection may no longer match a later locally trusted snapshot.
+No snapshot is cached across operations or exported as ownership proof. Sharing
+this successful observation does not establish a timing repair or latency margin.
+
 
 `Calculate` includes admitted assessment attempts in the existing project sum.
 Hold = full reservation, zero charged, provenance reserved, unresolved true.

@@ -48,36 +48,40 @@ func (b *Broker) assessmentStopDeniedAttempts(ctx context.Context, binding x.Sco
 		if cleanupCtx.Err() != nil {
 			return x.ErrHeld
 		}
-		// Decision and absorbing denial are committed under the same journal lock.
-		// A failed/ambiguous ACK never authorizes a stop on this invocation.
-		a, e := b.assessmentChangeAttempt(binding, candidate.Slot, x.AttemptDeny, func(v *x.AssessmentAttempt) error {
-			if v.DenyLatched {
-				return nil
-			}
-			n, ne := b.assessmentNow()
-			reason := ""
-			if scopeReason != "" {
-				reason = "access_ended"
-				if scopeReason == "cancelled" || scopeReason == "expired" || scopeReason == "clock_rollback" {
-					reason = scopeReason
+		// A fresh validated committed denial plans Stop-only rescue, never
+		// claim continuation or positive closure/accounting authority. A new
+		// denial still needs its own definitive ACK; errors never reread/fallback.
+		a := candidate
+		if !a.DenyLatched {
+			a, e = b.assessmentChangeAttempt(binding, candidate.Slot, x.AttemptDeny, func(v *x.AssessmentAttempt) error {
+				if v.DenyLatched {
+					return nil
 				}
+				n, ne := b.assessmentNow()
+				reason := ""
+				if scopeReason != "" {
+					reason = "access_ended"
+					if scopeReason == "cancelled" || scopeReason == "expired" || scopeReason == "clock_rollback" {
+						reason = scopeReason
+					}
+				}
+				if reason != "" { /* absorbing scope denial already committed */
+				} else if ne != nil {
+					reason = "io_uncertain"
+				} else if n.Epoch != v.ClockEpoch || n.Wall.Before(mustOwnedTime(v.WallHighWater)) || n.TickMS < v.TickHighWaterMS {
+					reason = "clock_rollback"
+				} else if n.TickMS >= v.DeadlineTickMS || owneddata.Stamp(n.Wall)[:19]+"Z" >= v.Deadline {
+					reason = "expired"
+				}
+				if reason != "" {
+					v.DenyLatched = true
+					v.FailureCode = reason
+				}
+				return nil
+			})
+			if e != nil {
+				continue
 			}
-			if reason != "" { /* absorbing scope denial already committed */
-			} else if ne != nil {
-				reason = "io_uncertain"
-			} else if n.Epoch != v.ClockEpoch || n.Wall.Before(mustOwnedTime(v.WallHighWater)) || n.TickMS < v.TickHighWaterMS {
-				reason = "clock_rollback"
-			} else if n.TickMS >= v.DeadlineTickMS || owneddata.Stamp(n.Wall)[:19]+"Z" >= v.Deadline {
-				reason = "expired"
-			}
-			if reason != "" {
-				v.DenyLatched = true
-				v.FailureCode = reason
-			}
-			return nil
-		})
-		if e != nil {
-			continue
 		}
 		if !a.DenyLatched {
 			continue

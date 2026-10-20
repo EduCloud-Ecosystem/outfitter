@@ -125,14 +125,13 @@ func TestExecutionMainCloseFailureSurvivesUncertaintyPublicationFault(t *testing
 			if e != nil {
 				t.Fatal(e)
 			}
-			contentFailure, publishFailure := false, false
+			var contentFailure, publishFailure atomic.Bool
 			f.b.assessment.owned.fault = func(point string) error {
 				if point == "content-close:assessment-main" {
-					contentFailure = true
+					contentFailure.Store(true)
 					return errors.New("synthetic retained open descriptor")
 				}
-				if !publishFailure && publication != "none" && point == publication+"-journal:"+string(x.ScopeContentUncertain) {
-					publishFailure = true
+				if publication != "none" && point == publication+"-journal:"+string(x.ScopeContentUncertain) && publishFailure.CompareAndSwap(false, true) {
 					return errors.New("synthetic uncertainty publication failure")
 				}
 				return nil
@@ -142,7 +141,7 @@ func TestExecutionMainCloseFailureSurvivesUncertaintyPublicationFault(t *testing
 			if _, e = f.b.AssessmentData(context.Background(), c, bytes.NewReader(body)); e == nil {
 				t.Fatal("uncertain close accepted")
 			}
-			if !contentFailure || publication != "none" && !publishFailure {
+			if !contentFailure.Load() || publication != "none" && !publishFailure.Load() {
 				t.Fatal("fault not reached")
 			}
 			scope, _, e := f.b.assessmentRead(c.Binding)
