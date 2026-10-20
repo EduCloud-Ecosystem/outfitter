@@ -63,29 +63,82 @@ func erasePath(m map[string]any, path string) {
 		erasePath(child, parts[1])
 	}
 }
-func only(a, b any, paths ...string) bool {
-	var x, y map[string]any
-	ab, _ := json.Marshal(a)
-	bb, _ := json.Marshal(b)
-	// UseNumber preserves exact integer equality for counters and identities.
+
+// A comparison belongs to one immutable old/next classification. Nested
+// validation after Advance changes counters/clock constructs its own pair.
+type maskComparison struct {
+	old, next any
+	ready     bool
+	a, b      map[string]any
+	different bool
+}
+
+func (c *maskComparison) prepare() {
+	if c.ready {
+		return
+	}
+	c.ready = true
+	ab, _ := json.Marshal(c.old)
+	bb, _ := json.Marshal(c.next)
 	d := json.NewDecoder(strings.NewReader(string(ab)))
 	d.UseNumber()
-	_ = d.Decode(&x)
+	_ = d.Decode(&c.a)
 	d = json.NewDecoder(strings.NewReader(string(bb)))
 	d.UseNumber()
-	_ = d.Decode(&y)
-	for _, p := range append(paths, "generation", "normal_transitions_used", "safety_transitions_used", "wall_high_water", "tick_high_water_ms") {
-		erasePath(x, p)
-		erasePath(y, p)
+	_ = d.Decode(&c.b)
+	for _, p := range []string{"generation", "normal_transitions_used", "safety_transitions_used", "wall_high_water", "tick_high_water_ms"} {
+		erasePath(c.a, p)
+		erasePath(c.b, p)
 	}
-	return eq(x, y)
+	c.different = !eq(c.a, c.b)
+}
+func copyJSONObject(m map[string]any) map[string]any {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+func eraseCandidatePath(m map[string]any, path string) {
+	parts := strings.SplitN(path, ".", 2)
+	if len(parts) == 1 {
+		delete(m, parts[0])
+		return
+	}
+	if child, ok := m[parts[0]].(map[string]any); ok {
+		// Copy the candidate's current ancestor, never the original base:
+		// repeated/sibling paths must not restore an earlier erased field.
+		child = copyJSONObject(child)
+		m[parts[0]] = child
+		eraseCandidatePath(child, parts[1])
+	}
+}
+func (c *maskComparison) only(paths ...string) bool {
+	c.prepare()
+	if len(paths) == 0 {
+		return !c.different
+	}
+	a, b := copyJSONObject(c.a), copyJSONObject(c.b)
+	for _, p := range paths {
+		eraseCandidatePath(a, p)
+		eraseCandidatePath(b, p)
+	}
+	return eq(a, b)
+}
+func (c *maskComparison) changed(paths ...string) bool {
+	c.prepare()
+	return c.different && c.only(paths...)
+}
+func only(a, b any, paths ...string) bool {
+	c := maskComparison{old: a, next: b}
+	return c.only(paths...)
 }
 func changed(a, b any, paths ...string) bool {
-	if !only(a, b, paths...) {
-		return false
-	}
-	// Clock and counter changes alone never constitute a semantic event.
-	return !only(a, b)
+	c := maskComparison{old: a, next: b}
+	return c.changed(paths...)
 }
 func advances(oldN, oldS, newN, newS int64, safety bool) bool {
 	if safety {
@@ -125,6 +178,10 @@ func appendAttemptObservation(old, next AssessmentAttempt) bool {
 }
 
 func scopeMask(old, next ExecutionScope, e Event, slotClaim bool) (bool, bool) {
+	c := maskComparison{old: old, next: next}
+	return scopeMaskCompared(old, next, e, slotClaim, &c)
+}
+func scopeMaskCompared(old, next ExecutionScope, e Event, slotClaim bool, comparison *maskComparison) (bool, bool) {
 	safety := false
 	ok := false
 	switch e {
@@ -137,7 +194,7 @@ func scopeMask(old, next ExecutionScope, e Event, slotClaim bool) (bool, bool) {
 		}
 		a, b := reflect.ValueOf(old.FilesystemIdentity), reflect.ValueOf(next.FilesystemIdentity)
 		for i, f := range fields {
-			if a.FieldByName(f).IsNil() && !b.FieldByName(f).IsNil() && changed(old, next, "filesystem_identity."+jsonFields[i]) {
+			if a.FieldByName(f).IsNil() && !b.FieldByName(f).IsNil() && comparison.changed("filesystem_identity."+jsonFields[i]) {
 				ok = true
 			}
 		}
@@ -147,54 +204,54 @@ func scopeMask(old, next ExecutionScope, e Event, slotClaim bool) (bool, bool) {
 		}
 	case ScopePrepareClosed:
 		safety = true
-		ok = !old.PrepareOwnershipCloseConfirmed && next.PrepareOwnershipCloseConfirmed && changed(old, next, "prepare_ownership_close_confirmed")
+		ok = !old.PrepareOwnershipCloseConfirmed && next.PrepareOwnershipCloseConfirmed && comparison.changed("prepare_ownership_close_confirmed")
 	case ScopeWriterClosed:
 		safety = true
-		ok = old.WriterStarted && !old.WriterOwnershipCloseConfirmed && next.WriterOwnershipCloseConfirmed && changed(old, next, "writer_ownership_close_confirmed")
+		ok = old.WriterStarted && !old.WriterOwnershipCloseConfirmed && next.WriterOwnershipCloseConfirmed && comparison.changed("writer_ownership_close_confirmed")
 	case ScopeSealBegin:
-		ok = old.State == "accepting" && old.UploadComplete && old.WriterOwnershipCloseConfirmed && !old.SealStarted && next.SealStarted && ScopeNormalCapacity-old.NormalTransitionsUsed >= 2 && changed(old, next, "seal_started")
+		ok = old.State == "accepting" && old.UploadComplete && old.WriterOwnershipCloseConfirmed && !old.SealStarted && next.SealStarted && ScopeNormalCapacity-old.NormalTransitionsUsed >= 2 && comparison.changed("seal_started")
 	case ScopeSealClosed:
 		safety = true
-		ok = old.SealStarted && !old.SealOwnershipCloseConfirmed && next.SealOwnershipCloseConfirmed && changed(old, next, "seal_ownership_close_confirmed")
+		ok = old.SealStarted && !old.SealOwnershipCloseConfirmed && next.SealOwnershipCloseConfirmed && comparison.changed("seal_ownership_close_confirmed")
 	case ScopeWatchClosed:
 		safety = true
-		ok = old.WatchStarted && !old.WatchOwnershipCloseConfirmed && next.WatchOwnershipCloseConfirmed && changed(old, next, "watch_ownership_close_confirmed")
+		ok = old.WatchStarted && !old.WatchOwnershipCloseConfirmed && next.WatchOwnershipCloseConfirmed && comparison.changed("watch_ownership_close_confirmed")
 	case ScopeCleanupBegin:
 		safety = true
-		ok = old.DenyLatched && old.CleanupOwnerEpoch == nil && next.CleanupOwnerEpoch != nil && changed(old, next, "cleanup_owner_epoch")
+		ok = old.DenyLatched && old.CleanupOwnerEpoch == nil && next.CleanupOwnerEpoch != nil && comparison.changed("cleanup_owner_epoch")
 	case ScopeCleanupClosed:
 		safety = true
-		ok = old.CleanupOwnerEpoch != nil && !old.CleanupOwnershipCloseConfirmed && next.CleanupOwnershipCloseConfirmed && (eq(old.Observations, next.Observations) && old.ObservationsSaturated == next.ObservationsSaturated || appendScopeObservation(old, next)) && changed(old, next, "cleanup_ownership_close_confirmed", "observations", "observations_saturated")
+		ok = old.CleanupOwnerEpoch != nil && !old.CleanupOwnershipCloseConfirmed && next.CleanupOwnershipCloseConfirmed && (eq(old.Observations, next.Observations) && old.ObservationsSaturated == next.ObservationsSaturated || appendScopeObservation(old, next)) && comparison.changed("cleanup_ownership_close_confirmed", "observations", "observations_saturated")
 	case ScopeLeaseUncertain:
 		safety = true
-		ok = !old.LeaseCloseUncertain && next.LeaseCloseUncertain && changed(old, next, "lease_close_uncertain")
+		ok = !old.LeaseCloseUncertain && next.LeaseCloseUncertain && comparison.changed("lease_close_uncertain")
 	case ScopeWatchClaim:
-		ok = !old.WatchStarted && next.WatchStarted && next.WatchEpoch != nil && changed(old, next, "watch_started", "watch_epoch")
+		ok = !old.WatchStarted && next.WatchStarted && next.WatchEpoch != nil && comparison.changed("watch_started", "watch_epoch")
 	case ScopeWatchReady:
-		ok = old.State == "preparing" && next.State == "accepting" && changed(old, next, "state")
+		ok = old.State == "preparing" && next.State == "accepting" && comparison.changed("state")
 	case ScopeWriterClaim:
-		ok = old.State == "accepting" && old.PrepareOwnershipCloseConfirmed && !old.LeaseCloseUncertain && !old.WriterStarted && next.WriterStarted && ScopeNormalCapacity-old.NormalTransitionsUsed >= 6 && changed(old, next, "writer_started")
+		ok = old.State == "accepting" && old.PrepareOwnershipCloseConfirmed && !old.LeaseCloseUncertain && !old.WriterStarted && next.WriterStarted && ScopeNormalCapacity-old.NormalTransitionsUsed >= 6 && comparison.changed("writer_started")
 	case ScopeContentClosed:
 		safety = old.DenyLatched
-		ok = old.WriterStarted && !old.ContentCloseConfirmed && next.ContentCloseConfirmed && changed(old, next, "content_close_confirmed")
+		ok = old.WriterStarted && !old.ContentCloseConfirmed && next.ContentCloseConfirmed && comparison.changed("content_close_confirmed")
 	case ScopeUploadComplete:
-		ok = !old.UploadComplete && next.UploadComplete && old.WriterOwnershipCloseConfirmed && old.ContentCloseConfirmed && !old.ContentCloseUncertain && old.SealedLengthBytes == nil && next.SealedLengthBytes != nil && changed(old, next, "upload_complete", "sealed_length_bytes")
+		ok = !old.UploadComplete && next.UploadComplete && old.WriterOwnershipCloseConfirmed && old.ContentCloseConfirmed && !old.ContentCloseUncertain && old.SealedLengthBytes == nil && next.SealedLengthBytes != nil && comparison.changed("upload_complete", "sealed_length_bytes")
 	case ScopeSeal:
-		ok = old.State == "accepting" && next.State == "sealed" && old.UploadComplete && old.SealStarted && old.SealOwnershipCloseConfirmed && !old.LeaseCloseUncertain && changed(old, next, "state")
+		ok = old.State == "accepting" && next.State == "sealed" && old.UploadComplete && old.SealStarted && old.SealOwnershipCloseConfirmed && !old.LeaseCloseUncertain && comparison.changed("state")
 	case ScopeSlotClaim:
-		ok = slotClaim && old.State == "sealed" && only(old, next) && ScopeNormalCapacity-old.NormalTransitionsUsed >= 1
+		ok = slotClaim && old.State == "sealed" && comparison.only() && ScopeNormalCapacity-old.NormalTransitionsUsed >= 1
 	case ScopeDeny:
 		safety = true
-		ok = !old.DenyLatched && next.DenyLatched && next.ExecutionDenyLatched && next.State == "cleaning" && changed(old, next, "deny_latched", "execution_deny_latched", "reason", "state")
+		ok = !old.DenyLatched && next.DenyLatched && next.ExecutionDenyLatched && next.State == "cleaning" && comparison.changed("deny_latched", "execution_deny_latched", "reason", "state")
 	case ScopeContentUncertain:
 		safety = true
-		ok = old.WriterStarted && old.DenyLatched && !old.ContentCloseUncertain && next.ContentCloseUncertain && changed(old, next, "content_close_uncertain")
+		ok = old.WriterStarted && old.DenyLatched && !old.ContentCloseUncertain && next.ContentCloseUncertain && comparison.changed("content_close_uncertain")
 	case ScopeUnresolved:
 		safety = true
-		ok = old.State == "cleaning" && next.State == "cleanup_unresolved" && changed(old, next, "state")
+		ok = old.State == "cleaning" && next.State == "cleanup_unresolved" && comparison.changed("state")
 	case ScopeObservationEvent:
 		safety = true
-		ok = old.DenyLatched && appendScopeObservation(old, next) && changed(old, next, "observations", "observations_saturated")
+		ok = old.DenyLatched && appendScopeObservation(old, next) && comparison.changed("observations", "observations_saturated")
 	}
 	if !safety && (old.DenyLatched || old.ExecutionDenyLatched) {
 		ok = false
@@ -214,11 +271,12 @@ func ScopeTransition(old, next ExecutionScope, slotClaim bool) error {
 	if next.Validate() != nil || next.Generation != old.Generation+1 || next.WallHighWater < old.WallHighWater || next.TickHighWaterMS < old.TickHighWaterMS {
 		return ErrInvalid
 	}
+	comparison := maskComparison{old: old, next: next}
 	for _, event := range scopeEvents {
 		if slotClaim && event != ScopeSlotClaim {
 			continue
 		}
-		ok, safety := scopeMask(old, next, event, slotClaim)
+		ok, safety := scopeMaskCompared(old, next, event, slotClaim, &comparison)
 		if ok && advances(old.NormalTransitionsUsed, old.SafetyTransitionsUsed, next.NormalTransitionsUsed, next.SafetyTransitionsUsed, safety) {
 			return nil
 		}
@@ -309,20 +367,24 @@ func phaseMonotone(old, next *PhaseRecord) bool {
 	return old.Phase == next.Phase && old.OwnerName == next.OwnerName
 }
 func attemptMask(old, next AssessmentAttempt, e Event) (bool, bool) {
+	c := maskComparison{old: old, next: next}
+	return attemptMaskCompared(old, next, e, &c)
+}
+func attemptMaskCompared(old, next AssessmentAttempt, e Event, comparison *maskComparison) (bool, bool) {
 	safety := false
 	ok := false
 	forward := one(old.State, "claimed", "preparing", "running", "checking") && !old.DenyLatched && !old.OwnershipCloseConfirmed && !old.OwnershipCloseUncertain && !old.ReaderCloseConfirmed && !old.CollectorCloseConfirmed && !old.ReaderCloseUncertain && !old.CollectorCloseUncertain
 	switch e {
 	case AttemptOwnershipClosed:
 		safety = true
-		ok = !old.OwnershipCloseConfirmed && next.OwnershipCloseConfirmed && one(old.State, "finishing", "held", "terminal") && changed(old, next, "ownership_close_confirmed")
+		ok = !old.OwnershipCloseConfirmed && next.OwnershipCloseConfirmed && one(old.State, "finishing", "held", "terminal") && comparison.changed("ownership_close_confirmed")
 	case AttemptOwnershipUncertain:
 		safety = true
-		ok = !old.OwnershipCloseUncertain && next.OwnershipCloseUncertain && changed(old, next, "ownership_close_uncertain")
+		ok = !old.OwnershipCloseUncertain && next.OwnershipCloseUncertain && comparison.changed("ownership_close_uncertain")
 	case AttemptReader:
-		ok = !old.ReaderStarted && next.ReaderStarted && changed(old, next, "reader_started")
+		ok = !old.ReaderStarted && next.ReaderStarted && comparison.changed("reader_started")
 	case AttemptCollector:
-		ok = !old.CollectorStarted && next.CollectorStarted && changed(old, next, "collector_started")
+		ok = !old.CollectorStarted && next.CollectorStarted && comparison.changed("collector_started")
 	case AttemptPhase:
 		for i, p := range []*PhaseRecord{next.PhaseRecords.Workload, next.PhaseRecords.Checker} {
 			name := "workload"
@@ -331,7 +393,7 @@ func attemptMask(old, next AssessmentAttempt, e Event) (bool, bool) {
 				name = "checker"
 				prior = old.PhaseRecords.Checker
 			}
-			if old.ReaderStarted && old.CollectorStarted && prior == nil && p != nil && eq(*p, PhaseRecord{Phase: name, OwnerName: ResourceName(old.Binding.BrokerAuthorityID, old.Slot.AttemptID, name)}) && changed(old, next, "phase_records."+name) {
+			if old.ReaderStarted && old.CollectorStarted && prior == nil && p != nil && eq(*p, PhaseRecord{Phase: name, OwnerName: ResourceName(old.Binding.BrokerAuthorityID, old.Slot.AttemptID, name)}) && comparison.changed("phase_records."+name) {
 				ok = true
 			}
 		}
@@ -360,43 +422,43 @@ func attemptMask(old, next AssessmentAttempt, e Event) (bool, bool) {
 					}
 					paths = append(paths, "phase_records."+name+".started_at")
 				}
-				if changed(old, next, paths...) {
+				if comparison.changed(paths...) {
 					ok = true
 				}
 			}
 		}
 	case AttemptForward:
-		ok = (old.State == "claimed" && next.State == "preparing" || old.State == "preparing" && next.State == "running" || old.State == "running" && next.State == "checking") && changed(old, next, "state")
+		ok = (old.State == "claimed" && next.State == "preparing" || old.State == "preparing" && next.State == "running" || old.State == "running" && next.State == "checking") && comparison.changed("state")
 	case AttemptReaderClosed:
 		safety = true
-		ok = old.ReaderStarted && !old.ReaderCloseConfirmed && next.ReaderCloseConfirmed && old.GlobalCloseReady() && changed(old, next, "reader_close_confirmed")
+		ok = old.ReaderStarted && !old.ReaderCloseConfirmed && next.ReaderCloseConfirmed && old.GlobalCloseReady() && comparison.changed("reader_close_confirmed")
 	case AttemptReaderUncertain:
 		safety = true
-		ok = old.ReaderStarted && !old.ReaderCloseUncertain && next.ReaderCloseUncertain && changed(old, next, "reader_close_uncertain")
+		ok = old.ReaderStarted && !old.ReaderCloseUncertain && next.ReaderCloseUncertain && comparison.changed("reader_close_uncertain")
 	case AttemptCollectorClosed:
 		safety = true
-		ok = old.CollectorStarted && !old.CollectorCloseConfirmed && next.CollectorCloseConfirmed && old.GlobalCloseReady() && changed(old, next, "collector_close_confirmed")
+		ok = old.CollectorStarted && !old.CollectorCloseConfirmed && next.CollectorCloseConfirmed && old.GlobalCloseReady() && comparison.changed("collector_close_confirmed")
 	case AttemptCollectorUncertain:
 		safety = true
-		ok = old.CollectorStarted && !old.CollectorCloseUncertain && next.CollectorCloseUncertain && changed(old, next, "collector_close_uncertain")
+		ok = old.CollectorStarted && !old.CollectorCloseUncertain && next.CollectorCloseUncertain && comparison.changed("collector_close_uncertain")
 	case AttemptDeny:
 		safety = true
-		ok = !old.DenyLatched && next.DenyLatched && old.FailureCode == "none" && next.FailureCode != "none" && changed(old, next, "deny_latched", "failure_code")
+		ok = !old.DenyLatched && next.DenyLatched && old.FailureCode == "none" && next.FailureCode != "none" && comparison.changed("deny_latched", "failure_code")
 	case AttemptFinish:
 		safety = true
-		ok = (one(old.State, "claimed", "preparing", "running", "checking") && one(next.State, "finishing", "held") || old.State == "finishing" && one(next.State, "held", "terminal") || old.State == "held" && next.State == "terminal") && changed(old, next, "state", "outcome")
+		ok = (one(old.State, "claimed", "preparing", "running", "checking") && one(next.State, "finishing", "held") || old.State == "finishing" && one(next.State, "held", "terminal") || old.State == "held" && next.State == "terminal") && comparison.changed("state", "outcome")
 	case AttemptSettle:
 		safety = true
-		ok = old.AccountingUnresolved && !next.AccountingUnresolved && !old.ComputeCleanupObserved && next.ComputeCleanupObserved && next.EffectsClosed() && one(next.State, "held", "terminal") && changed(old, next, "compute", "accounting_unresolved", "compute_cleanup_observed")
+		ok = old.AccountingUnresolved && !next.AccountingUnresolved && !old.ComputeCleanupObserved && next.ComputeCleanupObserved && next.EffectsClosed() && one(next.State, "held", "terminal") && comparison.changed("compute", "accounting_unresolved", "compute_cleanup_observed")
 	case AttemptMetrics:
 		safety = !forward
-		ok = eq(old.Metrics, UnknownMeasurements()) && old.MeasurementDigest == nil && next.MeasurementDigest != nil && changed(old, next, "metrics", "measurement_digest")
+		ok = eq(old.Metrics, UnknownMeasurements()) && old.MeasurementDigest == nil && next.MeasurementDigest != nil && comparison.changed("metrics", "measurement_digest")
 	case AttemptQuality:
 		safety = !forward
-		ok = old.Quality.Status == "unknown" && next.Quality.Status != "unknown" && changed(old, next, "quality")
+		ok = old.Quality.Status == "unknown" && next.Quality.Status != "unknown" && comparison.changed("quality")
 	case AttemptObservationEvent:
 		safety = true
-		ok = appendAttemptObservation(old, next) && changed(old, next, "cleanup_observations", "observations_saturated")
+		ok = appendAttemptObservation(old, next) && comparison.changed("cleanup_observations", "observations_saturated")
 	}
 	if !safety && !forward {
 		ok = false
@@ -432,8 +494,9 @@ func AttemptTransition(old, next AssessmentAttempt, s ExecutionScope) error {
 	if next.Validate(s) != nil || next.Generation != old.Generation+1 || next.WallHighWater < old.WallHighWater || next.TickHighWaterMS < old.TickHighWaterMS {
 		return ErrInvalid
 	}
+	comparison := maskComparison{old: old, next: next}
 	for _, event := range attemptEvents {
-		ok, safety := attemptMask(old, next, event)
+		ok, safety := attemptMaskCompared(old, next, event, &comparison)
 		if ok && advances(old.NormalTransitionsUsed, old.SafetyTransitionsUsed, next.NormalTransitionsUsed, next.SafetyTransitionsUsed, safety) {
 			return nil
 		}

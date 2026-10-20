@@ -203,6 +203,16 @@ workload, then independent checker. No fresh checker budget, timer, retry or DAG
 Reader/collector and each phase's transport have write-ahead start markers and
 separate close-confirmed/close-uncertain latches. Uncertainty is sticky.
 
+Event classification may reuse an immutable JSON/UseNumber projection of one
+fixed before/after pair within that synchronous classification only. Candidate
+path erasure must not mutate that pair or any later candidate. This is local
+representation work, not current authority or a cross-operation cache. Store v7
+may reuse the already successful whole-Data closed-shape check for its typed
+Authority subtree, while retaining the same raw-payload integer/depth scan and
+all semantic, state-path and filesystem-identity checks. Public DecodeClosed
+still performs both lexical and full closed-shape validation. No event, ACK,
+physical cleanup, clock, counter, wire or older-version behavior changes.
+
 Checker creation requires workload definitively stopped and removed, no possible
 late create or outstanding create/start ACK, closed workload transport with no
 uncertainty, current scope/lifelines/clock and retained reader exclusion.

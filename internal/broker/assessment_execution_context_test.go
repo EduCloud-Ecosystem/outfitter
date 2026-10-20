@@ -104,10 +104,12 @@ func TestExecutionCallerCancelSuppressesLaterProviderEffects(t *testing.T) {
 		t.Run(point, func(t *testing.T) {
 			f := newExecutionFixture(t)
 			var expiry *executionExpiryTrace
+			var priorFault func(string) error
 			if point == "after-create-before-start" {
-				expiry = &executionExpiryTrace{}
-				// Before seal: observe the actual copied watcher without parking it.
-				f.b.assessment.owned.fault = expiry.hook
+				expiry = &executionExpiryTrace{whole: &executionCleanupResidency{}}
+				priorFault = f.b.assessment.owned.fault
+				f.b.assessment.owned.fault = expiry.whole.hook("watcher", priorFault)
+				f.b.assessment.provider = &executionResidencyProvider{f.b.assessment.provider, expiry.whole, "watcher"}
 				originalTransport := f.b.assessment.transport
 				f.b.assessment.transport = func(ctx context.Context, scope x.ExecutionScope, phase string) (io.Closer, error) {
 					transport, e := originalTransport(ctx, scope, phase)
@@ -124,6 +126,11 @@ func TestExecutionCallerCancelSuppressesLaterProviderEffects(t *testing.T) {
 			gate := &executionContextGate{entered: make(chan struct{}), release: make(chan struct{})}
 			p := &executionContextProvider{executionTestProvider: f.p, gate: gate, afterCreate: point == "after-create-before-start", trace: newExecutionContextTrace(), expiry: expiry, startContext: "none"}
 			f.b.assessment.provider = p
+			if expiry != nil {
+				f.b.assessment.owned.fault = expiry.whole.hook("parent", priorFault)
+				f.b.assessment.provider = &executionResidencyProvider{p, expiry.whole, "parent"}
+				executionResidencyWrapCollector(f.b, expiry.whole)
+			}
 			if !p.afterCreate {
 				f.b.assessment.storage = executionContextStorage{f.b.assessment.storage, gate}
 			}

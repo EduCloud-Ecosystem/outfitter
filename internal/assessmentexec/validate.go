@@ -38,6 +38,16 @@ var pinnedImage = regexp.MustCompile(`^(sha256:[a-f0-9]{64}|[a-zA-Z0-9][a-zA-Z0-
 // null and case-aliased keys. Integer lexical rules are checked before Go's
 // decoder can normalize an exponent, negative zero or a rounded float.
 func DecodeClosed(raw []byte, out any, limit int) error {
+	if CheckIntegerDepthJSON(raw, limit) != nil || owneddata.ClosedJSON(raw, out, limit) != nil {
+		return ErrInvalid
+	}
+	return nil
+}
+
+// CheckIntegerDepthJSON applies only the existing raw integer/depth rules.
+// It does not establish closed shape, UTF8, uniqueness, a single top-level
+// value, authorization or ownership. Its callers must retain those checks.
+func CheckIntegerDepthJSON(raw []byte, limit int) error {
 	if len(raw) == 0 || len(raw) > limit {
 		return ErrInvalid
 	}
@@ -72,7 +82,7 @@ func DecodeClosed(raw []byte, out any, limit int) error {
 			}
 		}
 	}
-	if depth != 0 || owneddata.ClosedJSON(raw, out, limit) != nil {
+	if depth != 0 {
 		return ErrInvalid
 	}
 	return nil
