@@ -24,7 +24,7 @@ func Serve(in io.Reader, out io.Writer) error {
 	keys := []string{"operation", "manifest", "receipts"}
 	if operation == "project_legacy" {
 		keys = []string{"operation", "manifest", "binding", "cleanup_receipt_id", "source_receipt"}
-	} else if operation != "validate" {
+	} else if operation != "validate" && operation != "validate_v2" {
 		return errors.New("INVALID_ASSESSMENT_OPERATION")
 	}
 	if len(fields) != len(keys) {
@@ -32,6 +32,9 @@ func Serve(in io.Reader, out io.Writer) error {
 	}
 	if _, e := objectFields(raw, keys, nil); e != nil {
 		return errors.New("INVALID_ASSESSMENT_REQUEST")
+	}
+	if operation == "validate_v2" {
+		return serveV2(fields, out)
 	}
 	m, e := DecodeManifest(fields["manifest"])
 	if e != nil {
@@ -60,6 +63,29 @@ func Serve(in io.Reader, out io.Writer) error {
 		return e
 	}
 	raw, e = Canonical(result)
+	if e != nil || len(raw) > MaxOutputBytes {
+		return errors.New("RECEIPT_OUTPUT_LIMIT")
+	}
+	if n, e := out.Write(raw); e != nil || n != len(raw) {
+		return errors.New("RECEIPT_OUTPUT_FAILED")
+	}
+	return nil
+}
+
+func serveV2(fields map[string]json.RawMessage, out io.Writer) error {
+	m, e := DecodeManifestV2(fields["manifest"])
+	if e != nil {
+		return e
+	}
+	s, e := DecodeReceiptsV2(fields["receipts"])
+	if e != nil {
+		return e
+	}
+	result, e := ValidateV2(m, s)
+	if e != nil {
+		return e
+	}
+	raw, e := Canonical(result)
 	if e != nil || len(raw) > MaxOutputBytes {
 		return errors.New("RECEIPT_OUTPUT_LIMIT")
 	}
