@@ -429,14 +429,16 @@ func (f *ownedProcessFixture) ready() owneddata.Status {
 func (f *ownedProcessFixture) waitScope(predicate func(owneddata.Scope) bool) owneddata.Scope {
 	f.t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
+	var last owneddata.Scope
 	for time.Now().Before(deadline) {
-		s := f.scope()
-		if predicate(s) {
-			return s
+		last = f.scope()
+		if predicate(last) {
+			return last
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	f.t.Fatal("scope transition timed out")
+	raw, _ := json.Marshal(last)
+	f.t.Fatalf("scope transition timed out: %s", raw)
 	return owneddata.Scope{}
 }
 
@@ -663,8 +665,17 @@ func TestOwnedSeparateProcessesBlockedWriterCancelAndRace(t *testing.T) {
 	// A slow or race-instrumented command exit can leave the writer blocked
 	// long enough to fill the bounded observation log. Exercise this state
 	// deliberately; cleanup must remain eligible without rewriting evidence.
-	blocked := f.waitScope(func(s owneddata.Scope) bool { return s.ObservationsSaturated })
-	if len(blocked.Observations) != owneddata.MaxObservations || !blocked.DenyLatched || !blocked.WriterStarted || blocked.ContentCloseConfirmed || blocked.ContentCloseUncertain {
+	blocked := f.scope()
+	for attempts := 0; attempts < owneddata.MaxObservations && !blocked.ObservationsSaturated; attempts++ {
+		// Use acknowledged cleanup attempts, rather than assuming the watcher
+		// can fill its log within a wall-clock polling interval on every host.
+		_, failure := f.invoke("reconcile", f.control("reconcile", ready), nil, "")
+		if failure.Code != "" {
+			t.Fatal("blocked cleanup observation failed", failure)
+		}
+		blocked = f.scope()
+	}
+	if !blocked.ObservationsSaturated || len(blocked.Observations) != owneddata.MaxObservations || !blocked.DenyLatched || !blocked.WriterStarted || blocked.ContentCloseConfirmed || blocked.ContentCloseUncertain {
 		t.Fatal("invalid saturated blocked-writer state", blocked)
 	}
 	for _, o := range blocked.Observations {
