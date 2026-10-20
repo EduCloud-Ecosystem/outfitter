@@ -163,7 +163,7 @@ func (b *Broker) ownedWatch(ctx context.Context, id string) error {
 			if reason == "" && livePipe(x.ownerRead, s.FilesystemIdentity.OwnerRead) != "observed_current" {
 				reason = "restart"
 			}
-			if reason == "" && (x.checkRoot() != nil || sameRootEntry(x.stateRoot, leaseName(id, "watch"), *s.FilesystemIdentity.WatchLease, false) != nil) {
+			if reason == "" && (x.checkRoot() != nil || x.checkLeases(s) != nil) {
 				reason = "owner_mismatch"
 			}
 			if reason == "" && s.WriterStarted && !s.UploadComplete {

@@ -444,7 +444,7 @@ func (x *ownedBoundary) removeOwned(s owneddata.Scope, authority string) error {
 	if syncRoot(r) != nil || sameRootEntry(x.root, s.ScopeID, *s.FilesystemIdentity.Scope, true) != nil {
 		return owneddata.ErrUnresolved
 	}
-	if r.Remove("scope-owner.json") != nil || syncRoot(r) != nil || x.root.Remove(s.ScopeID) != nil || syncRoot(x.root) != nil || x.checkRoot() != nil || x.fail("after-owned-removal") != nil {
+	if r.Remove("scope-owner.json") != nil || syncRoot(r) != nil || x.root.Remove(s.ScopeID) != nil || syncRoot(x.root) != nil || x.checkRoot() != nil || x.checkLeases(s) != nil || x.fail("after-owned-removal") != nil {
 		return owneddata.ErrUnresolved
 	}
 	return nil

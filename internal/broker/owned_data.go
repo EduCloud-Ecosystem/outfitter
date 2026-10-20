@@ -357,7 +357,7 @@ func (b *Broker) ownedFresh(c owneddata.Control, s owneddata.Scope, readWatch bo
 		return n, reason, owneddata.ErrDenied
 	}
 	x := b.owned
-	if x.checkRoot() != nil || x.id != s.BoundaryID || x.rootIdentity != s.FilesystemIdentity.Root {
+	if x.checkRoot() != nil || x.id != s.BoundaryID || x.rootIdentity != s.FilesystemIdentity.Root || x.checkLeases(s) != nil {
 		return n, "owner_mismatch", owneddata.ErrUnresolved
 	}
 	if livePipe(x.ownerRead, s.FilesystemIdentity.OwnerRead) != "observed_current" {
