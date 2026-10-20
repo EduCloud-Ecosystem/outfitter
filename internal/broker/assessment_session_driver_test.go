@@ -44,12 +44,15 @@ type executionSessionDriver struct {
 	primaryReplyDeadline                                                      time.Time
 	mu                                                                        sync.Mutex
 	primaryFiller                                                             *os.File
+	seedChild                                                                 *executionSeedChild
+	seedSetupOK, ownerWaitKnown                                               bool
 }
 
 type executionSessionDriverOptions struct {
 	prequeuePrepareTrigger bool
 	retainReplyFiller      bool
 	cleanupOrder           bool
+	externalSeed           bool
 }
 
 func (d *executionSessionDriver) closeFile(f *os.File) error {
@@ -64,6 +67,27 @@ func (d *executionSessionDriver) closeFile(f *os.File) error {
 		d.closeErr = e
 	}
 	return e
+}
+
+// Only the Linux fresh fixture uses this disposal action. This is test-root
+// disposal, never core cleanup proof. The diagnostic completion broadcast must
+// be observed before accepting the cached close outcome; no reader is waited on
+// here, and any unknown/error retains the root.
+func (d *executionSessionDriver) disposeSeedFixture(base string) (bool, error) {
+	d.mu.Lock()
+	ready := d.seedSetupOK && d.closeErr == nil && (d.seedChild == nil || d.seedChild.WaitKnown()) && (d.cmd == nil || d.ownerWaitKnown)
+	if ready && d.stderrDone != nil {
+		select {
+		case <-d.stderrDone:
+		default:
+			ready = false
+		}
+	}
+	d.mu.Unlock()
+	if !ready {
+		return false, nil
+	}
+	return true, os.RemoveAll(base)
 }
 
 // NewFile observes an already-nonblocking atomic duplicate, so Go's spawn Fd
@@ -101,7 +125,23 @@ func newExecutionSessionDriver(t *testing.T, options ...executionSessionDriverOp
 	t.Helper()
 	d := &executionSessionDriver{closed: map[*os.File]bool{}, sequence: map[byte]uint64{}, wait: make(chan error, 1), stderr: make(chan error, 1), diagnostics: make(chan executionSessionDiagnostic, 2)}
 	// Register TempDir first so endpoint/process cleanup runs before its removal.
-	base := t.TempDir()
+	var base string
+	if executionSeedSupported() {
+		var baseErr error
+		base, baseErr = os.MkdirTemp("", "outfitter-session-seed-")
+		if baseErr != nil {
+			t.Fatal("private seed parent creation")
+		}
+		// Register before process cleanup: never delete a partially accepted or
+		// actively unknown root merely because this test is ending.
+		t.Cleanup(func() {
+			if _, disposeErr := d.disposeSeedFixture(base); disposeErr != nil {
+				t.Error("known fixture disposal failed")
+			}
+		})
+	} else {
+		base = t.TempDir()
+	}
 	// Register partial cleanup before constructing any resources.
 	t.Cleanup(func() {
 		if d.cancel != nil {
@@ -113,11 +153,23 @@ func newExecutionSessionDriver(t *testing.T, options ...executionSessionDriverOp
 		if d.cmd != nil && d.cmd.Process != nil {
 			select {
 			case <-d.wait:
+				d.ownerWaitKnown = true
 			case <-time.After(3 * time.Second):
 				t.Error("original session process did not reap")
 			}
 		}
-		if d.closeErr != nil {
+		if d.seedChild != nil && !d.seedChild.Finish() {
+			t.Error("original seed Wait remains unknown; private root retained")
+		}
+		var closeUncertain bool
+		if executionSeedSupported() {
+			d.mu.Lock()
+			closeUncertain = d.closeErr != nil
+			d.mu.Unlock()
+		} else {
+			closeUncertain = d.closeErr != nil
+		}
+		if closeUncertain {
 			t.Error("checked driver endpoint close failed")
 		}
 		if d.stderrDone != nil {
@@ -128,61 +180,86 @@ func newExecutionSessionDriver(t *testing.T, options ...executionSessionDriverOp
 			}
 		}
 	})
-	state, data := filepath.Join(base, "state"), filepath.Join(base, "data")
-	for _, path := range []string{state, data} {
-		if e := os.Mkdir(path, 0700); e != nil {
-			t.Fatal(e)
-		}
+	var option executionSessionDriverOptions
+	if len(options) > 1 {
+		t.Fatal("fixed driver options")
+	}
+	if len(options) == 1 {
+		option = options[0]
 	}
 	var e error
-	state, e = filepath.EvalSymlinks(state)
-	if e != nil {
-		t.Fatal(e)
-	}
-	data, e = filepath.EvalSymlinks(data)
-	if e != nil {
-		t.Fatal(e)
-	}
-	idAt := func(path string) x.FilesystemIdentity {
-		st, e := os.Stat(path)
-		if e != nil {
-			t.Fatal(e)
-		}
-		id, e := ledger.FileIdentity(st)
-		if e != nil {
-			t.Fatal(e)
-		}
-		return id
-	}
-	for _, name := range []string{"initialized", "ledger.lock", "execution.lock"} {
-		if e := os.WriteFile(filepath.Join(state, name), nil, 0600); e != nil {
-			t.Fatal(e)
-		}
-	}
-	identity := x.AuthorityIdentity{WaypointAuthorityID: strings.Repeat("4", 32), Directory: idAt(state), JournalLease: idAt(filepath.Join(state, "ledger.lock")), ExecutionLease: idAt(filepath.Join(state, "execution.lock"))}
-	project := strings.Repeat("2", 32)
-	seed := ledger.Data{Version: 7, Owner: strings.Repeat("f", 32), Authority: &ledger.Authority{ID: strings.Repeat("5", 32), StatePath: state, Admission: "active"}, Projects: map[string]ledger.Project{project: {ID: project, Budget: 60}}, Runs: map[string]provider.Record{}, AssessmentExecution: &x.Authority{Schema: x.AuthoritySchema, Identity: identity, Scopes: map[string]x.ExecutionScope{}, Attempts: map[string]x.AssessmentAttempt{}}}
-	raw, e := json.Marshal(seed)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if e = os.WriteFile(filepath.Join(state, "ledger.json"), raw, 0600); e != nil {
-		t.Fatal(e)
-	}
-	d.store, e = ledger.Open(state, false)
-	if e != nil {
-		t.Fatal(e)
-	}
-	var m assessment.ManifestV2
-	if e = x.DecodeClosed(executionSessionManifestSource, &m, 65536); e != nil {
-		t.Fatal(e)
-	}
-	now := time.Now().UTC()
-	m.ProjectID, m.ExpiresAt = project, now.Add(time.Hour).Truncate(time.Second).Format(owneddata.SecondUTC)
-	expiry := now.Add(time.Hour).Truncate(time.Second)
-	d.config = executionSessionConfig{StateRoot: state, DataRoot: data, WaypointAuthorityID: identity.WaypointAuthorityID, ScopeID: strings.Repeat("3", 32), OwnerEpoch: strings.Repeat("8", 32), ScopeExpiresAt: executionSessionExpiry(now, expiry).Format(owneddata.SecondUTC), AuthorizationExpiry: expiry.Format(owneddata.SecondUTC), ProjectExpiry: expiry.Format(owneddata.SecondUTC), PolicyExpiry: expiry.Format(owneddata.SecondUTC), Manifest: m}
-	_, d.binding = executionSessionBindings(d.config)
 	configPath := filepath.Join(base, "private-bootstrap.json")
+	if executionSeedSupported() {
+		assets, parent, child, setupErr := executionSeedDriverSetup(base, option.externalSeed)
+		d.seedChild = child
+		if parent != nil {
+			d.owned = append(d.owned, parent)
+		}
+		if setupErr != nil {
+			t.Fatal("checked Linux seed setup failed")
+		}
+		d.config, d.binding = assets.Config, assets.Binding
+		d.store, e = ledger.Open(d.config.StateRoot, false)
+		if e != nil {
+			t.Fatal("checked Linux seed Store unavailable")
+		}
+		d.seedSetupOK = true
+		configPath = filepath.Join(base, executionSeedTargetName, "private-bootstrap.json")
+	} else {
+		state, data := filepath.Join(base, "state"), filepath.Join(base, "data")
+		for _, path := range []string{state, data} {
+			if e := os.Mkdir(path, 0700); e != nil {
+				t.Fatal(e)
+			}
+		}
+		state, e = filepath.EvalSymlinks(state)
+		if e != nil {
+			t.Fatal(e)
+		}
+		data, e = filepath.EvalSymlinks(data)
+		if e != nil {
+			t.Fatal(e)
+		}
+		idAt := func(path string) x.FilesystemIdentity {
+			st, e := os.Stat(path)
+			if e != nil {
+				t.Fatal(e)
+			}
+			id, e := ledger.FileIdentity(st)
+			if e != nil {
+				t.Fatal(e)
+			}
+			return id
+		}
+		for _, name := range []string{"initialized", "ledger.lock", "execution.lock"} {
+			if e := os.WriteFile(filepath.Join(state, name), nil, 0600); e != nil {
+				t.Fatal(e)
+			}
+		}
+		identity := x.AuthorityIdentity{WaypointAuthorityID: strings.Repeat("4", 32), Directory: idAt(state), JournalLease: idAt(filepath.Join(state, "ledger.lock")), ExecutionLease: idAt(filepath.Join(state, "execution.lock"))}
+		project := strings.Repeat("2", 32)
+		seed := ledger.Data{Version: 7, Owner: strings.Repeat("f", 32), Authority: &ledger.Authority{ID: strings.Repeat("5", 32), StatePath: state, Admission: "active"}, Projects: map[string]ledger.Project{project: {ID: project, Budget: 60}}, Runs: map[string]provider.Record{}, AssessmentExecution: &x.Authority{Schema: x.AuthoritySchema, Identity: identity, Scopes: map[string]x.ExecutionScope{}, Attempts: map[string]x.AssessmentAttempt{}}}
+		raw, e := json.Marshal(seed)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = os.WriteFile(filepath.Join(state, "ledger.json"), raw, 0600); e != nil {
+			t.Fatal(e)
+		}
+		d.store, e = ledger.Open(state, false)
+		if e != nil {
+			t.Fatal(e)
+		}
+		var m assessment.ManifestV2
+		if e = x.DecodeClosed(executionSessionManifestSource, &m, 65536); e != nil {
+			t.Fatal(e)
+		}
+		now := time.Now().UTC()
+		m.ProjectID, m.ExpiresAt = project, now.Add(time.Hour).Truncate(time.Second).Format(owneddata.SecondUTC)
+		expiry := now.Add(time.Hour).Truncate(time.Second)
+		d.config = executionSessionConfig{StateRoot: state, DataRoot: data, WaypointAuthorityID: identity.WaypointAuthorityID, ScopeID: strings.Repeat("3", 32), OwnerEpoch: strings.Repeat("8", 32), ScopeExpiresAt: executionSessionExpiry(now, expiry).Format(owneddata.SecondUTC), AuthorizationExpiry: expiry.Format(owneddata.SecondUTC), ProjectExpiry: expiry.Format(owneddata.SecondUTC), PolicyExpiry: expiry.Format(owneddata.SecondUTC), Manifest: m}
+		_, d.binding = executionSessionBindings(d.config)
+	}
 	pipe := func() (*os.File, *os.File) {
 		r, w, e := os.Pipe()
 		if r != nil {
@@ -217,13 +294,6 @@ func newExecutionSessionDriver(t *testing.T, options ...executionSessionDriverOp
 			t.Fatal("checked spawn duplicate", e)
 		}
 	}
-	var option executionSessionDriverOptions
-	if len(options) > 1 {
-		t.Fatal("fixed driver options")
-	}
-	if len(options) == 1 {
-		option = options[0]
-	}
 	if option.retainReplyFiller {
 		d.primaryFiller, e = executionSessionSpawnDuplicate(child[1])
 		if d.primaryFiller != nil {
@@ -233,16 +303,18 @@ func newExecutionSessionDriver(t *testing.T, options ...executionSessionDriverOp
 			t.Fatal(e)
 		}
 	}
-	// The original admission bound starts BEFORE spawn, not in the child.
-	if e = d.config.bindSessionDeadline(time.Now().UTC()); e != nil {
-		t.Fatal(e)
-	}
-	configRaw, e := json.Marshal(d.config)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if e = os.WriteFile(configPath, configRaw, 0600); e != nil {
-		t.Fatal(e)
+	if !executionSeedSupported() {
+		// The original admission bound starts BEFORE spawn, not in the child.
+		if e = d.config.bindSessionDeadline(time.Now().UTC()); e != nil {
+			t.Fatal(e)
+		}
+		configRaw, e := json.Marshal(d.config)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = os.WriteFile(configPath, configRaw, 0600); e != nil {
+			t.Fatal(e)
+		}
 	}
 	if option.prequeuePrepareTrigger {
 		frame, e := assessment.Canonical(d.prepareControl())
@@ -575,7 +647,10 @@ func (d *executionSessionDriver) prepareControl() x.Control {
 }
 
 func TestExecutionSessionActualOwnerLifecycleAndInertStage(t *testing.T) {
-	d := newExecutionSessionDriver(t)
+	if executionSeedSupported() {
+		executionSeedExecutableIdentity(t)
+	}
+	d := newExecutionSessionDriver(t, executionSessionDriverOptions{externalSeed: executionSeedSupported()})
 	before, e := os.ReadFile(filepath.Join(d.config.StateRoot, "ledger.json"))
 	if e != nil {
 		t.Fatal(e)
