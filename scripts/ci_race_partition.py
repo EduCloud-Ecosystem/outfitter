@@ -25,6 +25,8 @@ MAX_STDOUT = 64 * 1024 * 1024
 MAX_STDERR = 8 * 1024 * 1024
 MAX_LINE = 1024 * 1024
 MAX_METADATA = 4 * 1024 * 1024
+# Fixed CI policy: move this whole parent, including all its subtests, to R2.
+COMPLEMENT_EXECUTION_PARENT = "TestExecutionCleanupLateUncertaintyCannotPublishAbsence"
 EXPECTED_BROKER = tuple("""
 TestExecutionPositiveCommitFencesRecheckCurrentAuthority
 TestExecutionMainCloseFailureSurvivesUncertaintyPublicationFault
@@ -185,8 +187,8 @@ def partition(names, expected=EXPECTED_BROKER):
         if kind != "Benchmark":
             runnable.append(name)
     require(set(runnable) == set(expected), "actual list/source projection mismatch")
-    groups = ([n for n in runnable if n.startswith("TestExecution")],
-              [n for n in runnable if not n.startswith("TestExecution")])
+    groups = ([n for n in runnable if n.startswith("TestExecution") and n != COMPLEMENT_EXECUTION_PARENT],
+              [n for n in runnable if not n.startswith("TestExecution") or n == COMPLEMENT_EXECUTION_PARENT])
     require(all(groups), "empty broker partition")
     patterns = ["^(" + "|".join(g) + ")$" for g in groups]
     require(all(len(p) <= 65536 for p in patterns), "capped selection pattern")

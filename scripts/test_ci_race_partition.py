@@ -36,9 +36,24 @@ def complete(gate, names):
 class ParserControls(unittest.TestCase):
     def test_real_projection_is_complete_and_disjoint(self):
         selection = ci.partition(list(ci.EXPECTED_BROKER))
-        self.assertEqual([len(g) for g in selection["groups"]], [54, 44])
+        self.assertEqual([len(g) for g in selection["groups"]], [53, 45])
         self.assertFalse(set(selection["groups"][0]) & set(selection["groups"][1]))
         self.assertEqual(set().union(*map(set, selection["groups"])), set(ci.EXPECTED_BROKER))
+
+    def test_only_named_cleanup_parent_moves_and_owned_group_stays_whole(self):
+        moved = "TestExecutionCleanupLateUncertaintyCannotPublishAbsence"
+        selection = ci.partition(list(ci.EXPECTED_BROKER))
+        execution, complement = selection["groups"]
+        prior_execution = [n for n in ci.EXPECTED_BROKER if n.startswith("TestExecution")]
+        prior_complement = [n for n in ci.EXPECTED_BROKER if not n.startswith("TestExecution")]
+        self.assertEqual([n for n in prior_execution if n not in execution], [moved])
+        self.assertEqual([n for n in complement if n not in prior_complement], [moved])
+        self.assertEqual(execution, [n for n in prior_execution if n != moved])
+        self.assertEqual([n for n in complement if n != moved], prior_complement)
+        self.assertEqual(complement, [n for n in ci.EXPECTED_BROKER if n in set(complement)])
+        self.assertEqual(complement.count(moved), 1)
+        self.assertTrue(all(n in complement for n in ci.EXPECTED_BROKER if n.startswith("TestOwned")))
+        self.assertEqual(ci.COMMANDS, ("M0", "M1", "M2", "R1", "R2", "R3"))
 
     def test_examples_and_seed_corpus_selected_benchmarks_not_enabled(self):
         names = ["TestExecutionOne", "ExampleOne", "FuzzOne", "BenchmarkOne"]
@@ -622,7 +637,7 @@ class CaptureFailureControls(unittest.TestCase):
             self.assertEqual(summary["status"], "FAIL")
             self.assertEqual(summary["commands"]["R1"]["status"], "FAIL")
             self.assertEqual(summary["commands"]["R2"]["status"], "NOT_RUN")
-            self.assertEqual(len(summary["commands"]["R2"]["parents"][ci.BROKER]), 44)
+            self.assertEqual(len(summary["commands"]["R2"]["parents"][ci.BROKER]), 45)
             self.assertEqual(summary["commands"]["R3"]["status"], "NOT_RUN")
 
 
