@@ -167,6 +167,24 @@ logged as a fallback. These observations supply no authority, measurement or
 cleanup proof. The separate expiry test trace is limited to sixteen fixed
 stage counters and two snapshots totaling at most 8192 bytes.
 
+Private phase exits distinguish closed-metadata rejection (83), forbidden-list
+count or identity (84–85), descriptor inventory open/read/close/overflow
+(86–89), invalid entry name (90), fstat or flag-query error (91–92), missing
+CLOEXEC (93) and a forbidden identity match (94). These reuse the existing
+bounded exit-code diagnostic without changing rejection predicates, their
+order or the existing vanished-descriptor EBADF handling. Final checked stdio
+close failure still takes precedence as exit 82. Earlier exit 73 combined
+metadata and descriptor failures; later branch-specific evidence cannot identify
+the exact cause of an archived exit 73.
+
+Four isolated actual-child controls check a valid fixed envelope, closed-metadata
+rejection, an unrelated inherited extra descriptor and a forbidden stdin identity.
+The existing leaked-endpoint control now requires the precise CLOEXEC rejection.
+Each child retains its three-second context and 250-millisecond WaitDelay, with
+separate 256-byte counting/discard stream writers. Only bounded categories and
+counts are logged. Local passes do not establish the Linux CI branch, full
+session completion, core ownership closure or operational readiness.
+
 Positive watcher/overflow controls use one absolute twenty-second caller budget:
 at most ten seconds for actual live Start readiness, five for active assertions
 and four for original-owner drain, within the unchanged thirty-second attempt

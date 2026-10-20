@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -699,8 +700,8 @@ func TestExecutionSessionPhaseProbeRejectsActualLeakedEndpoint(t *testing.T) {
 		envelope.Forbidden[i] = id
 	}
 	raw, e := assessment.Canonical(envelope)
-	if e != nil {
-		t.Fatal(e)
+	if e != nil || x.DecodeClosed(raw, &executionSessionPhaseEnvelope{}, 32768) != nil {
+		t.Fatal("inherited endpoint metadata precondition invalid")
 	}
 	if _, e = meta.Write(raw); e != nil {
 		t.Fatal(e)
@@ -711,11 +712,150 @@ func TestExecutionSessionPhaseProbeRejectsActualLeakedEndpoint(t *testing.T) {
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestExecutionPrivateSessionPhaseHelper$")
 	cmd.Env = []string{"OUTFITTER_PRIVATE_SESSION_PHASE=1", "GOMAXPROCS=2"}
 	cmd.ExtraFiles = []*os.File{meta, prior, r}
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
+	cmd.WaitDelay = 250 * time.Millisecond
+	stdout, stderr := &executionPhaseCountDiscard{}, &executionPhaseCountDiscard{}
+	cmd.Stdout, cmd.Stderr = stdout, stderr
 	e = cmd.Run()
 	var exit *exec.ExitError
-	if !errors.As(e, &exit) || exit.ExitCode() != 73 {
-		t.Fatal("actual forbidden session endpoint was not rejected")
+	if !errors.As(e, &exit) || exit.ExitCode() != executionSessionPhaseNotCloexec || stdout.count != 0 || stderr.count != 0 || stdout.overflow || stderr.overflow {
+		t.Fatal("actual inherited endpoint did not reach exact closed CLOEXEC refusal")
+	}
+}
+
+// No bytes from these actual child probes are retained or forwarded. Counts
+// alone detect unexpected output and the fixed writer refuses beyond 256B.
+type executionPhaseCountDiscard struct {
+	count    int
+	overflow bool
+}
+
+func (w *executionPhaseCountDiscard) Write(p []byte) (int, error) {
+	remaining := 256 - w.count
+	if len(p) > remaining {
+		w.count = 256
+		w.overflow = true
+		return remaining, executionSessionProtocolError
+	}
+	w.count += len(p)
+	return len(p), nil
+}
+
+func TestExecutionSessionPhaseClosedBranchControls(t *testing.T) {
+	for _, name := range []string{"valid-fixed-envelope", "metadata-closed-reject", "extra-not-cloexec", "forbidden-stdio-identity"} {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			base := t.TempDir() // cleanup registered before checked handle closes
+			var handles []*os.File
+			t.Cleanup(func() {
+				for _, f := range handles {
+					if e := f.Close(); e != nil {
+						t.Error("isolated phase fixture checked close failed")
+					}
+				}
+			})
+			pipe := func() (*os.File, *os.File) {
+				r, w, e := os.Pipe()
+				if r != nil {
+					handles = append(handles, r)
+				}
+				if w != nil {
+					handles = append(handles, w)
+				}
+				if e != nil {
+					t.Fatal("isolated phase pipe construction failed")
+				}
+				return r, w
+			}
+			file := func(name string) *os.File {
+				f, e := os.CreateTemp(base, name)
+				if f != nil {
+					handles = append(handles, f)
+				}
+				if e != nil {
+					t.Fatal("isolated phase metadata construction failed")
+				}
+				return f
+			}
+			// This is isolated synthetic selector metadata, never a journal claim,
+			// admission, grant or reconstructed operation owner.
+			var manifest assessment.ManifestV2
+			if x.DecodeClosed(executionSessionManifestSource, &manifest, 65536) != nil {
+				t.Fatal("fixed phase source invalid")
+			}
+			config := executionSessionConfig{WaypointAuthorityID: strings.Repeat("4", 32), ScopeID: strings.Repeat("3", 32), Manifest: manifest}
+			capability, binding := executionSessionBindings(config)
+			deadline, _ := ctx.Deadline()
+			attempt := x.AssessmentAttempt{Binding: binding, Slot: manifest.Reservations[0], Deadline: deadline.UTC().Truncate(time.Second).Format(owneddata.SecondUTC)}
+			scope := x.ExecutionScope{Manifest: manifest, Capability: capability, Limits: capability.Limits}
+			request, e := assessmentPhaseRequestFor(scope, attempt, "workload")
+			if e != nil {
+				t.Fatal("isolated fixed phase request invalid")
+			}
+			forbiddenRead, _ := pipe()
+			identity, e := openedIdentity(forbiddenRead, "pipe")
+			if e != nil {
+				t.Fatal("isolated opened identity invalid")
+			}
+			envelope := executionSessionPhaseEnvelope{Request: request, Forbidden: make([]x.FilesystemIdentity, 9)}
+			for i := range envelope.Forbidden {
+				envelope.Forbidden[i] = identity
+			}
+			raw, e := assessment.Canonical(envelope)
+			if e != nil || x.DecodeClosed(raw, &executionSessionPhaseEnvelope{}, 32768) != nil {
+				t.Fatal("isolated closed metadata invalid")
+			}
+			want := 0
+			if name == "metadata-closed-reject" {
+				clear(raw)
+				raw = []byte(`{"unknown":true}`)
+				want = executionSessionPhaseMetadataDecode
+			}
+			defer clear(raw)
+			metadata, prior := file("metadata"), file("prior")
+			if n, e := metadata.Write(raw); e != nil || n != len(raw) {
+				t.Fatal("isolated metadata checked write failed")
+			}
+			if _, e := metadata.Seek(0, 0); e != nil {
+				t.Fatal("isolated metadata rewind failed")
+			}
+			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestExecutionPrivateSessionPhaseHelper$")
+			cmd.Env = []string{"OUTFITTER_PRIVATE_SESSION_PHASE=1", "GOMAXPROCS=2"}
+			cmd.WaitDelay = 250 * time.Millisecond
+			cmd.ExtraFiles = []*os.File{metadata, prior}
+			cmd.Stdin = bytes.NewReader(executionSessionInputSource)
+			switch name {
+			case "extra-not-cloexec":
+				unrelated, _ := pipe()
+				cmd.ExtraFiles = append(cmd.ExtraFiles, unrelated)
+				want = executionSessionPhaseNotCloexec
+			case "forbidden-stdio-identity":
+				// FD0 is reviewed stdio, so only the identity guard rejects it;
+				// the >=5 CLOEXEC predicate is not silently repaired or bypassed.
+				cmd.Stdin = forbiddenRead
+				want = executionSessionPhaseForbiddenMatch
+			}
+			stdout, stderr := &executionPhaseCountDiscard{}, &executionPhaseCountDiscard{}
+			cmd.Stdout, cmd.Stderr = stdout, stderr
+			waitErr := cmd.Run()
+			observed := -1
+			if cmd.ProcessState != nil {
+				observed = cmd.ProcessState.ExitCode()
+			}
+			t.Logf("isolated phase branch: expected=%d observed=%d wait_error=%s stdout_bytes=%d stderr_bytes=%d overflow=%t", want, observed, executionProcessErrorClass(waitErr), stdout.count, stderr.count, stdout.overflow || stderr.overflow)
+			if observed != want || stdout.overflow || stderr.overflow {
+				t.Fatal("isolated phase exact branch refused or mismatched")
+			}
+			if want == 0 {
+				if waitErr != nil || stdout.count != len("PRIVATE_OUTPUT_POISON") || stderr.count != len("PRIVATE_STDERR_POISON") {
+					t.Fatal("isolated phase success output contract failed")
+				}
+			} else {
+				var exit *exec.ExitError
+				if !errors.As(waitErr, &exit) || stdout.count != 0 || stderr.count != 0 {
+					t.Fatal("isolated phase rejection produced output or unknown wait")
+				}
+			}
+		})
 	}
 }

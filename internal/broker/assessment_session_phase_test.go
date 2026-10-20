@@ -93,28 +93,51 @@ func newExecutionSessionPhaseProvider(files [9]*os.File) (*executionSessionPhase
 	return p, nil
 }
 
-func executionSessionPhaseFDCheck(forbidden []x.FilesystemIdentity) error {
+// Older fixtures combined all these refusals into exit73. These private
+// branch codes reuse the bounded ExitCode diagnostic; they grant no authority.
+const (
+	executionSessionPhaseMetadataDecode = 83 + iota
+	executionSessionPhaseForbiddenCount
+	executionSessionPhaseForbiddenIdentity
+	executionSessionPhaseInventoryOpen
+	executionSessionPhaseInventoryRead
+	executionSessionPhaseInventoryClose
+	executionSessionPhaseInventoryOverflow
+	executionSessionPhaseEntryName
+	executionSessionPhaseFstat
+	executionSessionPhaseFlagQuery
+	executionSessionPhaseNotCloexec
+	executionSessionPhaseForbiddenMatch
+)
+
+func executionSessionPhaseFDCheck(forbidden []x.FilesystemIdentity) int {
 	if len(forbidden) != 9 {
-		return executionSessionProtocolError
+		return executionSessionPhaseForbiddenCount
 	}
 	for _, id := range forbidden {
 		if !id.Valid() {
-			return executionSessionProtocolError
+			return executionSessionPhaseForbiddenIdentity
 		}
 	}
 	directory, e := os.Open("/dev/fd")
 	if e != nil {
-		return executionSessionProtocolError
+		return executionSessionPhaseInventoryOpen
 	}
 	entries, e := directory.ReadDir(129)
 	closeErr := directory.Close()
-	if e != nil && e != io.EOF || closeErr != nil || len(entries) > 128 {
-		return executionSessionProtocolError
+	if e != nil && e != io.EOF {
+		return executionSessionPhaseInventoryRead
+	}
+	if closeErr != nil {
+		return executionSessionPhaseInventoryClose
+	}
+	if len(entries) > 128 {
+		return executionSessionPhaseInventoryOverflow
 	}
 	for _, entry := range entries {
 		fd, e := strconv.ParseUint(entry.Name(), 10, 20)
 		if e != nil {
-			return executionSessionProtocolError
+			return executionSessionPhaseEntryName
 		}
 		var st syscall.Stat_t
 		e = syscall.Fstat(int(fd), &st)
@@ -123,25 +146,28 @@ func executionSessionPhaseFDCheck(forbidden []x.FilesystemIdentity) error {
 			continue
 		}
 		if e != nil {
-			return executionSessionProtocolError
+			return executionSessionPhaseFstat
 		}
 		// Only stdio and the reviewed metadata/prior remaps may survive exec
 		// without CLOEXEC. Any extra descriptor created by this Go child runtime
 		// must itself be private; arbitrary inherited extras are refused.
 		if fd >= 5 {
 			flags, _, errno := syscall.Syscall(syscall.SYS_FCNTL, uintptr(fd), syscall.F_GETFD, 0)
-			if errno != 0 || flags&syscall.FD_CLOEXEC == 0 {
-				return executionSessionProtocolError
+			if errno != 0 {
+				return executionSessionPhaseFlagQuery
+			}
+			if flags&syscall.FD_CLOEXEC == 0 {
+				return executionSessionPhaseNotCloexec
 			}
 		}
 		id := x.FilesystemIdentity{Device: strconv.FormatUint(uint64(st.Dev), 10), Inode: strconv.FormatUint(uint64(st.Ino), 10)}
 		for _, bad := range forbidden {
 			if id == bad {
-				return executionSessionProtocolError
+				return executionSessionPhaseForbiddenMatch
 			}
 		}
 	}
-	return nil
+	return 0
 }
 
 func executionSessionPhaseEntry() int {
@@ -162,9 +188,13 @@ func executionSessionPhaseEntry() int {
 		return 72
 	}
 	var envelope executionSessionPhaseEnvelope
-	if x.DecodeClosed(raw, &envelope, 32768) != nil || executionSessionPhaseFDCheck(envelope.Forbidden) != nil {
+	if x.DecodeClosed(raw, &envelope, 32768) != nil {
 		_ = prior.Close()
-		return 73
+		return executionSessionPhaseMetadataDecode
+	}
+	if code := executionSessionPhaseFDCheck(envelope.Forbidden); code != 0 {
+		_ = prior.Close()
+		return code
 	}
 	clear(raw)
 	r := envelope.Request
