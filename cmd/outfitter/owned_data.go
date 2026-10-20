@@ -78,6 +78,13 @@ func executeOwnedCommand(args []string, in io.Reader, out io.Writer) error {
 	if e != nil {
 		return replyError(owneddata.ErrInvalid)
 	}
+	version, e := ledger.ReadOnlyVersion(*state)
+	if e != nil {
+		return replyError(owneddata.ErrUnresolved)
+	}
+	if version != 6 {
+		return replyError(owneddata.ErrDenied)
+	}
 	s, e := ledger.Open(*state, false)
 	if e != nil {
 		return replyError(owneddata.ErrUnresolved)

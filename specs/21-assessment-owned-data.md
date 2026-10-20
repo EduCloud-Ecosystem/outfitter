@@ -152,4 +152,3 @@ access revocation and removal, including a crash before content identity was
 published. Lease freedom and process disappearance cannot clear that hold.
 Deferred successful close after interrupted input can record confirmation
 without reopening denial. The original failure reason and observations remain.
-

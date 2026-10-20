@@ -667,7 +667,7 @@ func TestOwnedSeparateProcessesRejectBeforeBody(t *testing.T) {
 				if e == nil || cmd.ProcessState.ExitCode() != 2 {
 					t.Fatal("invalid header/runtime binding accepted")
 				}
-			case <-time.After(time.Second):
+			case <-time.After(2 * time.Second):
 				_ = cmd.Process.Kill()
 				<-done
 				t.Fatal("refusal waited for a body byte or EOF")

@@ -215,7 +215,7 @@ func (x *ownedBoundary) createLease(id, kind string) (*owneddata.FilesystemIdent
 	return &identity, nil
 }
 func (x *ownedBoundary) lease(s owneddata.Scope, kind string, exclusive bool) (func(), error) {
-	if x.checkRoot() != nil {
+	if x.checkRoot() != nil || x.checkLeases(s) != nil {
 		return nil, owneddata.ErrUnresolved
 	}
 	expected := s.FilesystemIdentity.WriterLease
@@ -232,7 +232,7 @@ func (x *ownedBoundary) lease(s owneddata.Scope, kind string, exclusive bool) (f
 	}
 	check := func() error {
 		id, e := openedIdentity(f, "file")
-		if e != nil || id != *expected || sameRootEntry(x.stateRoot, name, *expected, false) != nil || x.checkRoot() != nil {
+		if e != nil || id != *expected || sameRootEntry(x.stateRoot, name, *expected, false) != nil || x.checkRoot() != nil || x.checkLeases(s) != nil {
 			return owneddata.ErrUnresolved
 		}
 		return nil
@@ -258,6 +258,31 @@ func (x *ownedBoundary) lease(s owneddata.Scope, kind string, exclusive bool) (f
 		return nil, owneddata.ErrUnresolved
 	}
 	return release, nil
+}
+
+// Observe both stable lease objects without acquiring a conflicting watch
+// flock. The real watcher may already own that lock; identity is a separate
+// prerequisite from whichever exclusion this operation acquires.
+func (x *ownedBoundary) checkLeases(s owneddata.Scope) error {
+	for _, binding := range []struct {
+		kind     string
+		expected *owneddata.FilesystemIdentity
+	}{{"writer", s.FilesystemIdentity.WriterLease}, {"watch", s.FilesystemIdentity.WatchLease}} {
+		if binding.expected == nil {
+			return owneddata.ErrUnresolved
+		}
+		name := leaseName(s.ScopeID, binding.kind)
+		f, e := x.stateRoot.OpenFile(name, os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+		if e != nil {
+			return owneddata.ErrUnresolved
+		}
+		id, e := openedIdentity(f, "file")
+		ce := f.Close()
+		if e != nil || ce != nil || id != *binding.expected || sameRootEntry(x.stateRoot, name, *binding.expected, false) != nil {
+			return owneddata.ErrUnresolved
+		}
+	}
+	return nil
 }
 func markerBytes(s owneddata.Scope, authority string) []byte {
 	b, _ := json.Marshal(struct{ ScopeID, AuthorityID, WaypointAuthorityID, BoundaryID, WriterEpoch string }{s.ScopeID, authority, s.WaypointAuthorityID, s.BoundaryID, s.WriterEpoch})
@@ -361,7 +386,7 @@ func (x *ownedBoundary) openContent(s owneddata.Scope, authority string) (*os.Fi
 	return f, id, nil
 }
 func (x *ownedBoundary) removeOwned(s owneddata.Scope, authority string) error {
-	if x.checkRoot() != nil || x.id != s.BoundaryID || x.rootIdentity != s.FilesystemIdentity.Root {
+	if x.checkRoot() != nil || x.id != s.BoundaryID || x.rootIdentity != s.FilesystemIdentity.Root || x.checkLeases(s) != nil {
 		return owneddata.ErrUnresolved
 	}
 	if _, e := x.root.Lstat(s.ScopeID); os.IsNotExist(e) && s.FilesystemIdentity.Scope != nil {
@@ -387,6 +412,9 @@ func (x *ownedBoundary) removeOwned(s owneddata.Scope, authority string) error {
 		}
 	}
 	if x.fail("before-owned-removal") != nil {
+		return owneddata.ErrUnresolved
+	}
+	if x.checkLeases(s) != nil {
 		return owneddata.ErrUnresolved
 	}
 	check, e := x.openScope(s, authority)

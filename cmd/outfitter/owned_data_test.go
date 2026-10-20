@@ -125,3 +125,47 @@ func TestOwnedCLIContentGatePrecedesStdinAndState(t *testing.T) {
 		}
 	}
 }
+
+func TestOwnedCLIMetadataDoesNotMigrateLegacy(t *testing.T) {
+	binary := ownedCLIBinary(t)
+	for _, op := range []string{"status", "cancel", "reconcile"} {
+		t.Run(op, func(t *testing.T) {
+			s, e := ledger.Open(filepath.Join(t.TempDir(), "state"), true)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if _, e = s.InitProject("legacy", 90); e != nil {
+				t.Fatal(e)
+			}
+			path := filepath.Join(s.Dir, "ledger.json")
+			raw, e := os.ReadFile(path)
+			if e != nil {
+				t.Fatal(e)
+			}
+			var d map[string]any
+			if json.Unmarshal(raw, &d) != nil {
+				t.Fatal("legacy decode")
+			}
+			d["version"] = 1
+			delete(d, "authority")
+			before, _ := json.Marshal(d)
+			if e = os.WriteFile(path, before, 0600); e != nil {
+				t.Fatal(e)
+			}
+			c := map[string]any{"schema": owneddata.ControlSchema, "operation": op, "scope_id": "44444444444444444444444444444444", "waypoint_authority_id": "66666666666666666666666666666666", "expected_broker_authority_id": "55555555555555555555555555555555"}
+			if op == "cancel" {
+				c["reason"] = "cancelled"
+			}
+			request, _ := json.Marshal(c)
+			cmd := exec.Command(binary, "--state-dir", s.Dir, "owned-data", op)
+			cmd.Stdin = bytes.NewReader(request)
+			if out, e := cmd.CombinedOutput(); e == nil {
+				t.Fatalf("metadata command accepted v1: %s", out)
+			}
+			after, e := os.ReadFile(path)
+			if e != nil || !bytes.Equal(before, after) {
+				t.Fatal("owned metadata command migrated legacy journal", e)
+			}
+		})
+	}
+}
