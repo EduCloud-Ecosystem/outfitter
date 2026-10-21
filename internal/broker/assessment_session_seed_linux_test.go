@@ -1046,16 +1046,30 @@ func TestExecutionSessionSeedBoundaryControls(t *testing.T) {
 		}
 		g := executionSeedControlNew(t, 0)
 		sample, _ := owneddata.Time(g.request.SampledAt, true)
-		now := sample
+		// Fixture publication already advanced the retained clock history.
+		// Start there; only the actual write boundary moves to the cutoff.
+		now := g.fs.last
+		if now.IsZero() || now.Before(sample) || !now.Before(g.end) {
+			t.Fatal("deadline control clock precondition unavailable")
+		}
 		g.fs.clock = func() time.Time { return now }
+		hookCalls := 0
 		g.fs.fault = func(point string) error {
 			if point == "before-write" {
+				hookCalls++
 				now = g.end
 			}
 			return nil
 		}
-		if _, e := g.fs.build(g.parent, g.request); e == nil || !g.fs.created {
-			t.Fatal("post-blocking expired partial accepted")
+		_, buildErr := g.fs.build(g.parent, g.request)
+		if hookCalls != 1 || !now.Equal(g.end) {
+			t.Fatal("deadline control did not reach the actual write boundary once")
+		}
+		if buildErr != executionSessionProtocolError {
+			t.Fatal("post-boundary deadline refusal missing")
+		}
+		if !g.fs.created {
+			t.Fatal("deadline control did not retain its actual partial target")
 		}
 		g.fs.fault = nil
 		executionSeedControlFinished(t, g.fs)

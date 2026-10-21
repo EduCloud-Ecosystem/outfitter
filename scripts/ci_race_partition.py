@@ -599,8 +599,8 @@ SEED_ASSETS = {
         "sha256": "45d92fccecc1d9760c0c68e605cf52f6ab86d95553b4ce16f6b4cb7403249c27"
     },
     "internal/broker/assessment_session_seed_linux_test.go": {
-        "bytes": 44310,
-        "sha256": "cdda1818e0f949417804ffd8c59bab60502562a345c30e4cd7a23bb34a2f0738"
+        "bytes": 44860,
+        "sha256": "02649a0c6b44bd0392a69986f7651a8f12ac3160639f9761814e6e41a45b9ceb"
     },
     "internal/broker/assessment_session_seed_other_test.go": {
         "bytes": 4827,
