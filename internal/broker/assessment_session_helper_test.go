@@ -93,15 +93,25 @@ func (c executionSessionConfig) grants(now time.Time) (ownedPolicy, time.Time, e
 
 func executionSessionConfigRead(path string) (executionSessionConfig, error) {
 	var c executionSessionConfig
-	f, e := os.Open(path)
-	if e != nil {
-		return c, e
-	}
-	info, statErr := f.Stat()
-	raw, readErr := io.ReadAll(io.LimitReader(f, 131073))
-	closeErr := f.Close()
-	if statErr != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || readErr != nil || closeErr != nil || len(raw) > 131072 || x.DecodeClosed(raw, &c, 131072) != nil {
-		return c, executionSessionProtocolError
+	var raw []byte
+	var e error
+	if executionSeedSupported() {
+		raw, e = executionSeedReadConfig(path)
+		if e != nil || x.DecodeClosed(raw, &c, 131072) != nil {
+			return c, executionSessionProtocolError
+		}
+	} else {
+		f, e := os.Open(path)
+		if e != nil {
+			return c, e
+		}
+		info, statErr := f.Stat()
+		var readErr error
+		raw, readErr = io.ReadAll(io.LimitReader(f, 131073))
+		closeErr := f.Close()
+		if statErr != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || readErr != nil || closeErr != nil || len(raw) > 131072 || x.DecodeClosed(raw, &c, 131072) != nil {
+			return c, executionSessionProtocolError
+		}
 	}
 	if len(c.StateRoot) > 1024 || len(c.DataRoot) > 1024 || !owneddata.ID(c.WaypointAuthorityID) || !owneddata.ID(c.ScopeID) || !owneddata.ID(c.OwnerEpoch) {
 		return c, executionSessionProtocolError

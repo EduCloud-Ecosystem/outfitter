@@ -25,12 +25,23 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p .runtime
+          mkdir .runtime/j1-seed-exercised
+          mkdir .runtime/j1-seed-exercised/metadata
+          git rev-parse HEAD 'HEAD^{tree}' > .runtime/j1-seed-exercised/metadata/source-id.before.txt
+          git ls-files -z > .runtime/j1-seed-exercised/metadata/tracked.before.nul
+          git status --porcelain=v1 --untracked-files=all > .runtime/j1-seed-exercised/metadata/status.before.txt
           python3 -B -m unittest discover -s scripts -p test_ci_race_partition.py
           python3 -B scripts/ci_race_partition.py
           go vet ./...
           test -z "$(gofmt -l cmd internal)"
       - name: Build local broker
-        run: go build -o bin/outfitter ./cmd/outfitter
+        run: |
+          set -euo pipefail
+          go build -o bin/outfitter ./cmd/outfitter
+          git rev-parse HEAD 'HEAD^{tree}' > .runtime/j1-seed-exercised/metadata/source-id.after.txt
+          git ls-files -z > .runtime/j1-seed-exercised/metadata/tracked.after.nul
+          git status --porcelain=v1 --untracked-files=all > .runtime/j1-seed-exercised/metadata/status.after.txt
+          python3 -B scripts/ci_race_partition.py --verify-j1-seed-exercised
       - name: Prepare pinned public Python image
         run: docker pull "$PYTHON_IMAGE"
       - name: Actual Docker adapter lifecycle
@@ -49,6 +60,7 @@ jobs:
           path: |
             .runtime/go-tests.jsonl
             .runtime/ci-race/
+            .runtime/j1-seed-helper/
             .runtime/docker-ci.json
             .runtime/recovery-ci.json
             .runtime/consumer-ci.json

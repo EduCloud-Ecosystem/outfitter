@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import selectors
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -91,6 +92,8 @@ TestExecutionSessionPhaseClosedBranchControls
 TestExecutionSessionActualOwnerLifecycleAndInertStage
 TestExecutionPrivateSessionOwnerHelper
 TestExecutionPrivateSessionPhaseHelper
+TestExecutionSessionSeedBoundaryControls
+TestExecutionPrivateSessionSeedHelper
 TestExecutionStopFirstDenialACKAndGenerationGuards
 TestExecutionStopAlreadyDeniedUsesCommittedState
 TestExecutionWatcherStopsActiveDeniedOrExpiredAttempt
@@ -568,6 +571,503 @@ def run(evidence, name, argv, gate=None, runtime=False):
     return (evidence.directory / (name + ".stdout")).read_bytes() if gate is None else None
 
 
+
+# One fixed, file-only artifact verifier. It never runs a command, installs a
+# signal handler, or borrows the original-process controller's authority.
+SEED_DIRECTORY = ".runtime/j1-seed-helper"
+SEED_RAW_DIRECTORY = ".runtime/j1-seed-exercised"
+SEED_POSITIVE = "TestExecutionSessionActualOwnerLifecycleAndInertStage"
+SEED_BOUNDARY = "TestExecutionSessionSeedBoundaryControls"
+SEED_HELPER = "TestExecutionPrivateSessionSeedHelper"
+SEED_BINARY_MAX = 64 * 1024 * 1024
+SEED_ASSET_MAX = 262144
+SEED_ASSETS_MAX = 3 * 1024 * 1024
+SEED_TOTAL_MAX = 75497472
+SEED_R1_OUTPUT = SEED_RAW_DIRECTORY + "/broker.test"
+SEED_ASSETS = {
+    "go.mod": {
+        "bytes": 58,
+        "sha256": "bcf81d648b7f769adf99a0864b64701f350d46d3784c8b1c24fc55fbeccb341f"
+    },
+    "internal/broker/assessment_session_driver_test.go": {
+        "bytes": 30855,
+        "sha256": "a151e968c35a108d2966489d6d0607d3010aa208d9798f0435960d3c9bb3e51e"
+    },
+    "internal/broker/assessment_session_helper_test.go": {
+        "bytes": 26542,
+        "sha256": "45d92fccecc1d9760c0c68e605cf52f6ab86d95553b4ce16f6b4cb7403249c27"
+    },
+    "internal/broker/assessment_session_seed_linux_test.go": {
+        "bytes": 44860,
+        "sha256": "02649a0c6b44bd0392a69986f7651a8f12ac3160639f9761814e6e41a45b9ceb"
+    },
+    "internal/broker/assessment_session_seed_other_test.go": {
+        "bytes": 4827,
+        "sha256": "263d8048be0ead881e3d4c970b5316c599810c47815dbd4cbb8e4ae515c0aaf3"
+    },
+    "internal/broker/assessment_session_seed_test.go": {
+        "bytes": 11500,
+        "sha256": "ebc59838d30637b834f6034e6de9af85cf585ee0628de0c1e225b77bd9b6e7ea"
+    },
+    "internal/broker/testdata/execution-session-a2-input.txt": {
+        "bytes": 21,
+        "sha256": "6a3c8e8e07b90e41e33adc3d537c772317092f2ab87ec714e96c0277cd208360"
+    },
+    "internal/broker/testdata/execution-session-a2-manifest.json": {
+        "bytes": 1752,
+        "sha256": "7d47caac0dabc9d7b9e7fad74823ec6616f42254b1da65dc59eb18c40edf1d5b"
+    },
+    "internal/broker/testdata/execution-session-a2-seed-vectors.json": {
+        "bytes": 4340,
+        "sha256": "3105fe70b716621d1123dcaa72c9b2d5551ca1910c9de1735480f0744fb904ed"
+    },
+    "specs/24-assessment-session-fixture.md": {
+        "bytes": 16869,
+        "sha256": "8e2e7bb8ef8ef8fa6e260a641c1aa7b337f55d392642dc92d869415b1bb4b07a"
+    }
+}
+SEED_LEAVES = (
+    "literal-and-clock-boundaries", "fresh-factor-shape", "existing-and-partial-refuse",
+    "nofollow-and-private-shape", "expired-positive-window", "closed-output-held",
+    "blocked-output-deadline", "partial-write-held", "checked-close-and-late-wait-held",
+    "single-shot-no-reseed",
+)
+SEED_PRODUCER = re.compile(
+    r"    assessment_session_driver_test\.go:651: external seed executable: "
+    r"sha256=([0-9a-f]{64}) bytes=([1-9][0-9]{0,8})\n")
+SEED_METADATA = {"source-id.before.txt": 256, "source-id.after.txt": 256,
+                 "tracked.before.nul": 131072, "tracked.after.nul": 131072,
+                 "status.before.txt": 65536, "status.after.txt": 65536}
+SEED_BEFORE_FILES = {"metadata/" + name for name in SEED_METADATA if name.endswith(".before.txt") or name.endswith(".before.nul")}
+SEED_INITIAL_FILES = {"broker.test", *("metadata/" + name for name in SEED_METADATA)}
+
+
+def seed_prelaunch(root):
+    """Refuse a prior binary, including a dangling link, before the sole R1 run."""
+    seed_shape(root, SEED_BEFORE_FILES, SEED_RAW_DIRECTORY)
+    try:
+        (root / SEED_R1_OUTPUT).lstat()
+    except FileNotFoundError:
+        return
+    raise Refused("preexisting exercised binary")
+
+
+def seed_stream(root, relative, cap=None, consume=None):
+    """Bounded buffers; reject links/special files before opening or reading."""
+    require(isinstance(relative, str) and len(relative) <= 4096 and
+            re.fullmatch(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*", relative) and
+            all(p not in (".", "..") for p in relative.split("/")), "artifact path")
+    path = root
+    for component in relative.split("/")[:-1]:
+        path = path / component
+        require(stat.S_ISDIR(path.lstat().st_mode), "artifact parent is not original directory")
+    path = root / relative
+    before = path.lstat()
+    require(stat.S_ISREG(before.st_mode) and (cap is None or before.st_size <= cap),
+            "artifact file shape/cap")
+    digest, size, prefix = hashlib.sha256(), 0, b""
+    descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+    with os.fdopen(descriptor, "rb") as handle:
+        opened = os.fstat(handle.fileno())
+        require(os.path.samestat(before, opened) and stat.S_ISREG(opened.st_mode), "artifact open identity")
+        while block := handle.read(65536):
+            size += len(block)
+            require(size <= before.st_size and (cap is None or size <= cap), "artifact grew/cap")
+            digest.update(block)
+            prefix = (prefix + block[:64])[:64]
+            if consume is not None:
+                consume(block)
+        after = os.fstat(handle.fileno())
+        require(size == before.st_size == after.st_size and os.path.samestat(before, after) and
+                before.st_mtime_ns == after.st_mtime_ns, "artifact changed during read")
+    final = path.lstat()
+    require(os.path.samestat(before, final) and before.st_size == final.st_size and
+            before.st_mtime_ns == final.st_mtime_ns, "artifact changed after close")
+    return {"bytes": size, "sha256": digest.hexdigest()}, prefix
+
+
+def seed_bytes(root, relative, cap):
+    blocks = []
+    seed_stream(root, relative, cap, blocks.append)
+    return b"".join(blocks)
+
+
+def seed_object(pairs):
+    value = {}
+    for key, item in pairs:
+        require(key not in value, "duplicate artifact JSON key")
+        value[key] = item
+    return value
+
+
+def seed_json(raw):
+    def invalid(_value):
+        raise Refused("nonfinite artifact JSON")
+    return json.loads(raw, object_pairs_hook=seed_object, parse_constant=invalid)
+
+
+def seed_shape(root, files, relative=SEED_DIRECTORY):
+    directory = root / relative
+    require(stat.S_ISDIR((root / ".runtime").lstat().st_mode) and
+            stat.S_ISDIR(directory.lstat().st_mode), "artifact directory shape")
+    directories = {str(Path(name).parent) for name in files}
+    directories = {str(parent) for name in directories for parent in (Path(name), *Path(name).parents)
+                   if str(parent) != "."}
+    observed = set()
+    for path in directory.rglob("*"):
+        name, mode = str(path.relative_to(directory)), path.lstat().st_mode
+        require((stat.S_ISDIR(mode) and name in directories) or
+                (stat.S_ISREG(mode) and name in files), "unknown/link/special artifact entry")
+        if stat.S_ISREG(mode):
+            observed.add(name)
+        require(len(observed) <= 4096, "artifact entry cap")
+    require(observed == set(files), "missing artifact file")
+
+
+def seed_events(root, relative, gate, records):
+    pending = b""
+    def consume(block):
+        nonlocal pending
+        pending += block
+        while b"\n" in pending:
+            line, pending = pending.split(b"\n", 1)
+            require(len(line) <= MAX_LINE, "artifact event line cap")
+            value = seed_json(line)
+            gate.event(value)
+            output = value.get("Output")
+            if isinstance(output, str) and "external seed executable:" in output:
+                match = SEED_PRODUCER.fullmatch(output)
+                require(value.get("Package") == BROKER and value.get("Test") == SEED_POSITIVE and
+                        value.get("Action") == "output" and match is not None,
+                        "wrong/malformed executable producer")
+                records.append({"sha256": match[1], "bytes": int(match[2])})
+                require(len(records) == 1 and records[0]["bytes"] <= SEED_BINARY_MAX,
+                        "duplicate/oversize executable producer")
+        require(len(pending) <= MAX_LINE, "artifact partial event cap")
+    result, _ = seed_stream(root, relative, MAX_STDOUT, consume)
+    require(not pending, "unfinished artifact events")
+    gate.finish()
+    return result
+
+
+def seed_write(directory, name, raw, cap):
+    require(len(raw) <= cap, "artifact output cap")
+    path = directory / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("xb") as handle:
+        require(handle.write(raw) == len(raw), "short artifact write")
+    require(seed_stream(directory, name, cap)[0] ==
+            {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}, "artifact write/close/hash")
+
+
+def seed_encode(value):
+    return (json.dumps(value, sort_keys=True, indent=2) + "\n").encode()
+
+
+def seed_validate_exercised(root):
+    """Validate every input before any binary or asset can enter the archive."""
+    seed_shape(root, SEED_INITIAL_FILES, SEED_RAW_DIRECTORY)
+    metadata = {name: seed_bytes(root, SEED_RAW_DIRECTORY + "/metadata/" + name, cap)
+                for name, cap in SEED_METADATA.items()}
+    require(sum(map(len, metadata.values())) <= 393728, "artifact metadata aggregate cap")
+    require(metadata["status.before.txt"] == metadata["status.after.txt"] == b"", "dirty/untracked source")
+    require(metadata["source-id.before.txt"] == metadata["source-id.after.txt"] and
+            re.fullmatch(rb"[0-9a-f]{40}\n[0-9a-f]{40}\n", metadata["source-id.before.txt"]),
+            "checkout identity drift/shape")
+    head, tree = metadata["source-id.before.txt"].decode().splitlines()
+    require(metadata["tracked.before.nul"] == metadata["tracked.after.nul"] and
+            metadata["tracked.before.nul"].endswith(b"\0"), "tracked inventory drift/shape")
+    names = metadata["tracked.before.nul"][:-1].decode("utf-8").split("\0")
+    require(0 < len(names) <= 4096 and names == sorted(set(names)) and
+            set(SEED_ASSETS) <= set(names) and "go.sum" not in names,
+            "tracked inventory/asset/absence shape")
+    require(not (root / "go.sum").exists() and not (root / "go.sum").is_symlink(), "unexpected go.sum")
+    inventory = [{"path": name, **seed_stream(root, name)[0]} for name in names]
+    inventory_raw = seed_encode(inventory)
+    require(len(inventory_raw) <= 262144, "source inventory output cap")
+    indexed = {item["path"]: {k: item[k] for k in ("bytes", "sha256")} for item in inventory}
+    require(all(indexed[name] == pin for name, pin in SEED_ASSETS.items()), "pinned asset/source drift")
+
+    summary = seed_json(seed_bytes(root, ".runtime/ci-race/summary.json", MAX_METADATA))
+    require(isinstance(summary, dict) and set(summary) ==
+            {"status", "failure", "commands", "finalization_errors", "remaining_coverage",
+             "downstream_acceptance", "margin"} and summary["status"] == "PASS" and
+            summary["failure"] is None and summary["finalization_errors"] == [] and
+            summary["remaining_coverage"] == "COMPLETE" and
+            summary["downstream_acceptance"] == "STILL_REQUIRED" and summary["margin"] == "UNKNOWN",
+            "incomplete/failed six-command summary")
+    outcomes = summary["commands"]
+    require(isinstance(outcomes, dict) and set(outcomes) == set(COMMANDS), "missing/extra command outcome")
+    outcome_keys = {"command", "kind", "state", "status", "argv", "exit", "identity_unknown",
+                    "group_diagnostic", "original_wait_completed", "stream_eof", "unfinished_signal_transition",
+                    "spawn_attempted", "started", "finalization_errors", "reason", "stored_bytes", "seen_bytes",
+                    "sha256", "aggregate_offset", "aggregate_bytes", "coverage"}
+    for name, outcome in outcomes.items():
+        require(isinstance(outcome, dict) and set(outcome) == outcome_keys and
+                outcome["command"] == name and outcome["kind"] == ("METADATA" if name.startswith("M") else "RACE") and
+                outcome["state"] == "TERMINAL" and outcome["status"] == "PASS" and
+                type(outcome["exit"]) is int and outcome["exit"] == 0 and
+                outcome["identity_unknown"] is False and outcome["group_diagnostic"] == "ABSENT" and
+                outcome["original_wait_completed"] is True and outcome["stream_eof"] == [True, True] and
+                outcome["unfinished_signal_transition"] is None and outcome["spawn_attempted"] is True and
+                outcome["started"] is True and outcome["finalization_errors"] == [] and outcome["reason"] is None,
+                "failed/unknown command outcome")
+        require(all(isinstance(outcome[key], list) and len(outcome[key]) == 2 and
+                    all(type(value) is int and value >= 0 for value in outcome[key])
+                    for key in ("stored_bytes", "seen_bytes")) and
+                isinstance(outcome["sha256"], list) and len(outcome["sha256"]) == 2 and
+                all(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
+                    for value in outcome["sha256"]), "artifact capture metadata types")
+    provenance = seed_json(seed_bytes(root, ".runtime/ci-race/M0.stdout", MAX_METADATA))
+    effective_environment(provenance, root)
+    environment = seed_json(seed_bytes(root, ".runtime/ci-race/environment.json", MAX_METADATA))
+    require(isinstance(environment, dict) and set(environment) == {*ENV_KEYS, "GORACE", "GOMAXPROCS"} and
+            {k: environment[k] for k in ENV_KEYS} == provenance and environment["GORACE"] in (None, ""),
+            "artifact Go environment drift")
+    require(all(len(v) <= 4096 for v in provenance.values()), "Go environment field cap")
+    packages = package_inventory(seed_bytes(root, ".runtime/ci-race/M1.stdout", MAX_METADATA), root)
+    require(seed_json(seed_bytes(root, ".runtime/ci-race/packages.json", MAX_METADATA)) == packages,
+            "artifact package inventory drift")
+    records, observed = [], {}
+    listed = Events({BROKER: packages[BROKER]}, listing=True)
+    observed["M2"] = seed_events(root, ".runtime/ci-race/M2.stdout", listed, records)
+    require(listed.names == list(EXPECTED_BROKER), "artifact actual list/source order mismatch")
+    selection = partition(listed.names)
+    require(seed_json(seed_bytes(root, ".runtime/ci-race/partition.json", MAX_METADATA)) ==
+            json.loads(json.dumps(selection)), "artifact partition drift")
+    flags = ["go", "test", "-race", "-json", "-count=1", "-timeout=600s"]
+    expected_argv = {"M0": ["go", "env", "-json", *ENV_KEYS], "M1": ["go", "list", "-json", "./..."],
+                     "M2": [*flags, "-list=.", "./internal/broker"]}
+    gates = {"M2": listed}
+    for name, parents, pattern in zip(("R1", "R2"), selection["groups"], selection["patterns"]):
+        gates[name] = Events({BROKER: packages[BROKER]}, parents)
+        expected_argv[name] = [*flags, *(["-o", SEED_R1_OUTPUT] if name == "R1" else []),
+                               "-run=" + pattern, "./internal/broker"]
+    others = {name: value for name, value in packages.items() if name != BROKER}
+    gates["R3"] = Events(others)
+    expected_argv["R3"] = [*flags, *others]
+    for name in ("R1", "R2", "R3"):
+        observed[name] = seed_events(root, ".runtime/ci-race/" + name + ".stdout", gates[name], records)
+    require(len(records) == 1, "missing executable producer")
+    for test in (SEED_POSITIVE, SEED_BOUNDARY, SEED_HELPER,
+                 *(SEED_BOUNDARY + "/" + leaf for leaf in SEED_LEAVES)):
+        require(gates["R1"].tests.get((BROKER, test), {}).get("terminal") == "pass", "unqualified seed parent/leaf")
+    for name in COMMANDS:
+        outcome = outcomes[name]
+        require(outcome["argv"] == expected_argv[name], "artifact command argv drift")
+        if name not in observed:
+            observed[name] = seed_stream(root, ".runtime/ci-race/" + name + ".stdout", MAX_STDOUT)[0]
+        stderr = seed_stream(root, ".runtime/ci-race/" + name + ".stderr", MAX_STDERR)[0]
+        require(outcome["stored_bytes"] == outcome["seen_bytes"] ==
+                [observed[name]["bytes"], stderr["bytes"]] and
+                outcome["sha256"] == [observed[name]["sha256"], stderr["sha256"]], "artifact capture drift")
+        require(outcome["coverage"] == (gates[name].summary() if name in gates else None),
+                "artifact coverage summary drift")
+    binary, prefix = seed_stream(root, SEED_R1_OUTPUT, SEED_BINARY_MAX)
+    machines = {"amd64": 62, "arm64": 183}
+    require(binary["bytes"] >= 64 and prefix[:7] == b"\x7fELF\x02\x01\x01" and
+            provenance["GOARCH"] in machines and
+            int.from_bytes(prefix[18:20], "little") == machines[provenance["GOARCH"]], "export target ELF identity")
+    require(binary == records[0], "retained binary differs from exercised seed executable")
+    asset_size = sum(pin["bytes"] for pin in SEED_ASSETS.values())
+    require(asset_size <= SEED_ASSETS_MAX, "asset aggregate cap")
+    receipt = {"schema": "outfitter.j1-linux-helper-association/v2", "status": "MATCHED_BINARY",
+               "checkout_head": head, "checkout_tree": tree,
+               "checkout_relation": "ACTUAL_CHECKOUT; ROOT_PARENT_TREE_API_REVIEW_REQUIRED",
+               "source_inventory_sha256": hashlib.sha256(inventory_raw).hexdigest(),
+               "source_files": len(inventory), "go_sum": "ABSENT",
+               "environment": {k: provenance[k] for k in ("GOOS", "GOARCH", "CGO_ENABLED", "GOVERSION", "GOFLAGS", "GOWORK")},
+               "r1_argv": expected_argv["R1"], "r1_exit": outcomes["R1"]["exit"],
+               "r1_meaning": "COMPILE_AND_TEST", "producer": {"package": BROKER, "test": SEED_POSITIVE, **records[0]},
+               "exercised_binary": binary,
+               "assets": SEED_ASSETS, "compiler_attestation": False,
+               "downstream_acceptance": "STILL_REQUIRED", "full_ci_acceptance": "ROOT_REVIEW_REQUIRED",
+               "margin": "UNKNOWN"}
+    receipt_raw = seed_encode(receipt)
+    require(len(receipt_raw) <= 16384, "association receipt cap")
+    sources = {"broker.test": (SEED_R1_OUTPUT, binary, SEED_BINARY_MAX)}
+    for name, cap in SEED_METADATA.items():
+        relative = SEED_RAW_DIRECTORY + "/metadata/" + name
+        raw = metadata[name]
+        sources["metadata/" + name] = (relative, {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}, cap)
+    for name, pin in SEED_ASSETS.items():
+        require(pin["bytes"] <= SEED_ASSET_MAX, "asset file cap")
+        sources["assets/" + name] = (name, pin, SEED_ASSET_MAX)
+    require(sum(pin["bytes"] for _, pin, _ in sources.values()) + len(inventory_raw) + len(receipt_raw) <=
+            SEED_TOTAL_MAX, "artifact total cap")
+    return receipt, sources, inventory_raw
+
+
+def seed_publish(root, temporary, directory, name, pin, cap, source=None, raw=None):
+    """Only checked, closed and rehashed temporary files enter the archive."""
+    target = temporary / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if raw is not None:
+        seed_write(temporary, name, raw, cap)
+    else:
+        with target.open("xb") as output:
+            def consume(block):
+                require(output.write(block) == len(block), "short artifact copy")
+            copied, _ = seed_stream(root, source, cap, consume)
+            require(copied == pin, "artifact input changed during copy")
+        require(seed_stream(temporary, name, cap)[0] == pin, "artifact copy/close/hash")
+    destination = directory / name
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    require(not destination.exists() and not destination.is_symlink(), "preexisting artifact destination")
+    os.rename(target, destination)
+    require(seed_stream(directory, name, cap)[0] == pin, "published artifact hash/close")
+
+
+SEED_FAILURE_CODES = {
+    "unknown/link/special artifact entry": "ARTIFACT_SHAPE",
+    "missing artifact file": "ARTIFACT_MISSING",
+    "artifact file shape/cap": "ARTIFACT_SHAPE_OR_CAP",
+    "artifact grew/cap": "ARTIFACT_UNSTABLE",
+    "artifact changed during read": "ARTIFACT_UNSTABLE",
+    "artifact changed after close": "ARTIFACT_UNSTABLE",
+    "artifact open identity": "ARTIFACT_UNSTABLE",
+    "dirty/untracked source": "SOURCE_DRIFT",
+    "checkout identity drift/shape": "SOURCE_DRIFT",
+    "tracked inventory drift/shape": "SOURCE_DRIFT",
+    "tracked inventory/asset/absence shape": "SOURCE_DRIFT",
+    "unexpected go.sum": "SOURCE_DRIFT",
+    "pinned asset/source drift": "ASSET_DRIFT",
+    "incomplete/failed six-command summary": "INCOMPLETE_RUN",
+    "missing/extra command outcome": "INCOMPLETE_RUN",
+    "failed/unknown command outcome": "INCOMPLETE_RUN",
+    "artifact command argv drift": "ARGV_DRIFT",
+    "missing executable producer": "PRODUCER_MISSING",
+    "duplicate/oversize executable producer": "PRODUCER_INVALID",
+    "wrong/malformed executable producer": "PRODUCER_INVALID",
+    "unqualified seed parent/leaf": "SEED_FAILED",
+    "export target ELF identity": "BINARY_IDENTITY",
+    "retained binary differs from exercised seed executable": "BINARY_MISMATCH",
+    "short artifact copy": "COPY_FAILED",
+    "artifact input changed during copy": "COPY_FAILED",
+    "artifact copy/close/hash": "COPY_FAILED",
+    "short artifact write": "PUBLICATION_FAILED",
+    "artifact write/close/hash": "PUBLICATION_FAILED",
+    "published artifact hash/close": "PUBLICATION_FAILED",
+    "retained input hash drift": "PUBLICATION_FAILED",
+    "retained inventory hash drift": "PUBLICATION_FAILED",
+}
+
+
+def seed_failure_code(error):
+    return SEED_FAILURE_CODES.get(str(error), "UNKNOWN") if isinstance(error, Refused) else "UNKNOWN"
+
+
+def seed_failure(root, directory, phase, error, temporary, attempted):
+    evidence = []
+    candidates = {"metadata/" + name: cap for name, cap in SEED_METADATA.items()}
+    for name, cap in candidates.items():
+        item = {"path": name, "status": "IO_UNKNOWN", "bytes": None, "sha256": None}
+        try:
+            relative = SEED_RAW_DIRECTORY + "/" + name
+            path = root
+            for part in relative.split("/")[:-1]:
+                path = path / part
+                require(stat.S_ISDIR(path.lstat().st_mode), "failure evidence parent shape")
+            info = (root / relative).lstat()
+            require(stat.S_ISREG(info.st_mode), "failure evidence shape")
+            item["bytes"] = info.st_size
+            if info.st_size > cap:
+                item["status"] = "OMITTED_CAP"  # Do not open, read or hash it.
+            elif (directory / name).exists():
+                # No second copy/adoption of an already attempted destination.
+                item.update(status="ALREADY_STAGED", **seed_stream(directory, name, cap)[0])
+            elif temporary is not None and name not in attempted:
+                attempted.add(name)
+                pin = seed_stream(root, relative, cap)[0]
+                seed_publish(root, temporary, directory, name, pin, cap, source=relative)
+                item.update(status="RETAINED", **pin)
+        except FileNotFoundError:
+            item["status"] = "MISSING"
+        except BaseException:
+            item["status"] = "IO_UNKNOWN"
+        evidence.append(item)
+    binary = {"path": "broker.test", "status": "UNKNOWN", "bytes": None, "sha256": None}
+    try:
+        pin, _ = seed_stream(root, SEED_R1_OUTPUT, SEED_BINARY_MAX)
+        binary.update(status="UNQUALIFIED_HASH", **pin)
+    except BaseException:
+        pass
+    evidence.append(binary)
+    failure = {"schema": "outfitter.j1-linux-helper-failure/v2", "status": "FAILED",
+               "phase": phase, "reason_code": seed_failure_code(error), "evidence": evidence,
+               "partial_stage": "UNQUALIFIED", "full_ci_acceptance": "FAILED_OR_INCOMPLETE",
+               "compiler_attestation": False}
+    # This bounded FAILED record can survive even when the raw root is missing.
+    raw = seed_encode(failure)
+    seed_write(directory, "failure.pending", raw, 16384)
+    os.rename(directory / "failure.pending", directory / "failure.json")
+
+
+def verify_seed_exercised(root):
+    """One fresh staging attempt; association alone never authorizes execution."""
+    require(stat.S_ISDIR((root / ".runtime").lstat().st_mode), "artifact parent shape")
+    directory = root / SEED_DIRECTORY
+    directory.mkdir()  # No adoption, cleanup or retry of an existing stage.
+    temporary, phase, attempted = None, "INPUT_QUALIFICATION", set()
+    try:
+        receipt, sources, inventory_raw = seed_validate_exercised(root)
+        temporary = root / SEED_RAW_DIRECTORY / "retention"
+        temporary.mkdir()  # Raw temporary files are never uploaded.
+        phase = "COPY_OR_PUBLICATION"
+        for name, (source, pin, cap) in sources.items():
+            attempted.add(name)
+            seed_publish(root, temporary, directory, name, pin, cap, source=source)
+        inventory_pin = {"bytes": len(inventory_raw), "sha256": hashlib.sha256(inventory_raw).hexdigest()}
+        seed_publish(root, temporary, directory, "source-inventory.json", inventory_pin, 262144, raw=inventory_raw)
+        files = {*sources, "source-inventory.json"}
+        seed_shape(root, files)
+        # Re-read every archived file after all copies and checked closes.
+        for name, (_, pin, cap) in sources.items():
+            require(seed_stream(directory, name, cap)[0] == pin, "retained input hash drift")
+        require(seed_stream(directory, "source-inventory.json", 262144)[0] == inventory_pin,
+                "retained inventory hash drift")
+        receipt_raw = seed_encode(receipt)
+        receipt_pin = {"bytes": len(receipt_raw), "sha256": hashlib.sha256(receipt_raw).hexdigest()}
+        # The success receipt is the LAST publication, from a checked raw temp.
+        seed_publish(root, temporary, directory, "association.json", receipt_pin, 16384, raw=receipt_raw)
+        return receipt
+    except BaseException as error:
+        # A return-boundary publication fault is still FAILED. Remove only this
+        # fresh attempt's success name; never reuse/retry the original stage.
+        try:
+            (directory / "association.json").unlink(missing_ok=True)
+        except BaseException:
+            pass  # File alone is never authority; mode/job/root acceptance is mandatory.
+        if temporary is None:
+            try:
+                raw_directory = root / SEED_RAW_DIRECTORY
+                require(stat.S_ISDIR(raw_directory.lstat().st_mode), "raw directory shape")
+                temporary = raw_directory / "retention"
+                temporary.mkdir()
+            except BaseException:
+                temporary = None
+        seed_failure(root, directory, phase, error, temporary, attempted)
+        raise Refused("J1 artifact qualification failed: " + phase) from error
+
+
+def seed_exercised_main():
+    try:
+        verify_seed_exercised(Path(__file__).resolve().parent.parent)
+        return 0
+    except BaseException as error:
+        print("J1 artifact FAILED: " + type(error).__name__ + ": " + str(error), file=sys.stderr)
+        return 1
+
+
+def entry(arguments):
+    if arguments == ["--verify-j1-seed-exercised"]:
+        return seed_exercised_main()
+    if arguments:
+        print("unsupported CI arguments", file=sys.stderr)
+        return 1
+    return main()
+
+
 def main():
     root = Path(__file__).resolve().parent.parent
     os.chdir(root)
@@ -595,7 +1095,10 @@ def main():
         selection = partition(listed.names)
         evidence.write("partition.json", selection)
         for name, parents, pattern in zip(("R1", "R2"), selection["groups"], selection["patterns"]):
-            run(evidence, name, [*flags, "-run=" + pattern, "./internal/broker"],
+            if name == "R1":
+                seed_prelaunch(root)
+            run(evidence, name, [*flags, *(["-o", SEED_R1_OUTPUT] if name == "R1" else []),
+                                 "-run=" + pattern, "./internal/broker"],
                 Events({BROKER: packages[BROKER]}, parents), runtime=True)
         others = {n: p for n, p in packages.items() if n != BROKER}
         run(evidence, "R3", [*flags, *others], Events(others), runtime=True)
@@ -632,4 +1135,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(entry(sys.argv[1:]))

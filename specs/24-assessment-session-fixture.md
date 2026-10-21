@@ -192,3 +192,70 @@ reservation. No provider context is replaced or renewed. A single trace pass
 near the drain limit does not explain an earlier failure or qualify cleanup
 latency. Failed controls and unknown historical causes remain visible; source
 acceptance is separate from host and whole-service qualification.
+
+## Fixed external seed fixture
+
+The separate private seed selector is compiled only into the test executable.
+Its positive path is Linux-only; other platforms refuse it before opening the
+request or creating a target. The accepted non-Linux trusted driver fixture is
+a separate qualification domain. No production initializer or legacy v6 seed
+is added. The owner still requires an already seeded v7 Store with budget 60,
+zero attempts and two fixed synthetic research slots.
+
+A trusted parent retains its original private directory handle and writes only
+`a2-seed-request.json`. The twelve required string fields are schema,
+scratch_parent, waypoint_authority_id, project_id, scope_id, owner_epoch,
+sampled_at, session_deadline, authorization_expiry, project_expiry,
+policy_expiry and manifest_sha256. The request is one closed JSON object plus
+LF, at most 8192 bytes. Its path is exactly the fixed sibling under that parent.
+The parent is at most 990 UTF-8 bytes and every derived path is at most 1024.
+Linux reads and creates use fixed single-component descriptor-relative names,
+no-follow, atomic CLOEXEC and nonblocking opens before file classification.
+Actual private directory and regular single-link file ownership, stable
+stat/read/stat and checked single closes are required. Rooted APIs that follow
+confined symlinks are not no-follow proof. This assumes the trusted private
+parent boundary; it does not claim immunity to arbitrary privileged interference.
+
+The original parent sample S precedes seed dispatch and fixes D = S + 120s.
+Manifest expiry is floor(S + 1h); policy and scope are floored minima of the
+original grants and D. The independent seed positive cutoff is the minimum of
+S + 10s, D and those effective caps. It is checked before positive filesystem
+actions and after blocking work, including before output and after checked
+stdio teardown before a successful exit. The seed
+window never renews the session or narrows its policy to ten seconds. Up to two
+seconds after that cutoff, inside D, permits only negative close/kill/reap.
+Kernel operations are not promised to be interruptible; uncertainty stays held.
+
+The selector inherits only reviewed stdio, not session, upload, owner or watch
+endpoints. Its result is one closed object with schema
+`outfitter.execution-session-seed-result/v1` and code SEEDED, REFUSED or HELD,
+at most 256 bytes including LF, followed by EOF without a harness footer.
+SEEDED also requires the original child exit zero, empty bounded stderr,
+definitive parent endpoint closes and anchored asset validation. A failure
+after output cannot be repaired with a second object. Wait, EOF and asset
+shape provide no current authorization or core cleanup proof. The parent retains
+the exact original command, Wait observation and endpoint outcomes through
+fixture teardown. A pending original Wait remains held under the same negative
+cutoff; a generic temporary-directory cleanup must not erase its partial root.
+The late-Wait control delays publication after the same actual Wait and does
+not qualify an operating-system reap failure.
+
+Only an exclusively created `a2-fixture` target may receive state/data roots,
+checked initialization and lock files, the v7 journal, `private-bootstrap.json`
+and canonical `fixed-binding.json`. Config and binding limits remain 131072
+and 8192 bytes including LF. Actual opened descriptors supply identities.
+Existing or partial targets are never repaired, adopted, overwritten or reset;
+any partial/close/output/deadline uncertainty stays held without reseeding.
+The Linux driver shares this secure factor; its existing positive lifecycle
+uses one actual external seed before the original owner. Its test log records
+only the checked SHA256 and byte size of that exact prebuilt executable, as
+artifact association rather than compiler attestation. Other controls need
+not launch redundant seed processes. Literal canonical vectors and actual
+Linux process/FD/refusal/fault evidence are distinct acceptance gates.
+
+New test parents require an explicit exact CI projection and whole-job budget
+review. The existing 15-minute job, 600-second alarms, default race settings,
+serial grouping, physical deadlines and assertions remain unchanged. The
+accepted 879-second run leaves only nominal single-run headroom, not a proven
+budget for these additions. No Python EX2 consumer or full-journey completion
+is implied by the test-only seed.
