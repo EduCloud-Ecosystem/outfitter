@@ -689,16 +689,17 @@ class CaptureFailureControls(unittest.TestCase):
 
     def test_failed_first_broker_command_leaves_complement_and_other_packages_not_run(self):
         with tempfile.TemporaryDirectory() as temporary, ExitStack() as stack:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             self.main_patches(stack, root)
             provenance = dict.fromkeys(ci.ENV_KEYS, "")
             provenance.update(GOOS="linux", GOMOD=str(root / "go.mod"))
             packages = [{"ImportPath": p, "Dir": str(root / "internal" / str(i)), **META}
                         for i, p in enumerate((ci.BROKER, ci.MODULE + "/internal/other"))]
-            calls = []
+            calls, argvs = [], {}
 
-            def simulated(evidence, name, _argv, gate=None, runtime=False):
+            def simulated(evidence, name, argv, gate=None, runtime=False):
                 calls.append(name)
+                argvs[name] = argv
                 evidence.outcomes[name] = {"status": "FAIL" if name == "R1" else "PASS"}
                 if name == "M0":
                     return json.dumps(provenance).encode()
@@ -710,8 +711,14 @@ class CaptureFailureControls(unittest.TestCase):
                 raise ci.Refused("synthetic failed original capture")
 
             stack.enter_context(patch.object(ci, "run", side_effect=simulated))
+            prelaunch = stack.enter_context(patch.object(ci, "seed_prelaunch"))
             self.assertEqual(ci.main(), 1)
             self.assertEqual(calls, ["M0", "M1", "M2", "R1"])
+            prelaunch.assert_called_once_with(root)
+            pattern = ci.partition(list(ci.EXPECTED_BROKER))["patterns"][0]
+            self.assertEqual(argvs["R1"], ["go", "test", "-race", "-json", "-count=1", "-timeout=600s",
+                                           "-o", ci.SEED_R1_OUTPUT, "-run=" + pattern, "./internal/broker"])
+            self.assertTrue(all("-o" not in argvs[name] for name in ("M0", "M1", "M2")))
             summary = json.loads((root / ".runtime/ci-race/summary.json").read_bytes())
             self.assertEqual(summary["status"], "FAIL")
             self.assertEqual(summary["commands"]["R1"]["status"], "FAIL")
@@ -752,9 +759,6 @@ class SeedArtifactControls(unittest.TestCase):
         self.binary[:7] = b"\x7fELF\x02\x01\x01"
         self.binary[18:20] = (62).to_bytes(2, "little")
         (self.directory / "broker.test").write_bytes(self.binary)
-        for name in ("export.stdout.txt", "export.stderr.txt"):
-            (self.directory / name).write_bytes(b"")
-        (self.directory / "export.exit.txt").write_bytes(b"0\n")
         self.pair = {"bytes": len(self.binary), "sha256": hashlib.sha256(self.binary).hexdigest()}
         self.producer = ("    assessment_session_driver_test.go:651: external seed executable: sha256=" +
                          self.pair["sha256"] + " bytes=" + str(self.pair["bytes"]) + "\n")
@@ -770,7 +774,8 @@ class SeedArtifactControls(unittest.TestCase):
         flags = ["go", "test", "-race", "-json", "-count=1", "-timeout=600s"]
         self.argv = {"M0": ["go", "env", "-json", *ci.ENV_KEYS], "M1": ["go", "list", "-json", "./..."],
                      "M2": [*flags, "-list=.", "./internal/broker"],
-                     "R1": [*flags, "-run=" + self.selection["patterns"][0], "./internal/broker"],
+                     "R1": [*flags, "-o", ci.SEED_R1_OUTPUT,
+                            "-run=" + self.selection["patterns"][0], "./internal/broker"],
                      "R2": [*flags, "-run=" + self.selection["patterns"][1], "./internal/broker"],
                      "R3": [*flags, ci.MODULE + "/internal/fixture"]}
         self.outcomes, self.events = {}, {}
@@ -809,7 +814,19 @@ class SeedArtifactControls(unittest.TestCase):
         for path in (self.stage, self.directory / "retention"):
             if path.exists():
                 shutil.rmtree(path)
-        return ci.verify_seed_export(self.root)
+        return ci.verify_seed_exercised(self.root)
+
+    def test_prelaunch_inventory_refuses_prior_binary_and_after_snapshots(self):
+        for name in ("source-id.after.txt", "tracked.after.nul", "status.after.txt"):
+            (self.directory / "metadata" / name).unlink()
+        with self.assertRaisesRegex(ci.Refused, "unknown/link/special artifact entry"):
+            ci.seed_prelaunch(self.root)
+        path = self.directory / "broker.test"
+        path.unlink()
+        ci.seed_prelaunch(self.root)
+        path.symlink_to(self.root / "missing-target")
+        with self.assertRaises(ci.Refused):
+            ci.seed_prelaunch(self.root)
 
     def meta(self, name, raw):
         (self.directory / "metadata" / name).write_bytes(raw)
@@ -851,7 +868,10 @@ class SeedArtifactControls(unittest.TestCase):
         receipt = self.verify()
         self.assertEqual(receipt["status"], "MATCHED_BINARY")
         self.assertEqual(receipt["producer"]["sha256"], self.pair["sha256"])
-        self.assertEqual(receipt["export"], self.pair)
+        self.assertEqual(receipt["schema"], "outfitter.j1-linux-helper-association/v2")
+        self.assertEqual(receipt["exercised_binary"], self.pair)
+        self.assertEqual(receipt["r1_exit"], 0)
+        self.assertEqual(receipt["r1_meaning"], "COMPILE_AND_TEST")
         self.assertEqual(receipt["checkout_head"], "1" * 40)
         self.assertNotEqual(receipt["checkout_head"], "6cccd6533213ad0cc91e0a23e3067b72161e11ac")
         self.assertEqual(receipt["checkout_tree"], "2" * 40)
@@ -863,11 +883,13 @@ class SeedArtifactControls(unittest.TestCase):
         for name in ("internal/broker/testdata/execution-session-a2-manifest.json",
                      "internal/broker/testdata/execution-session-a2-input.txt"):
             self.assertEqual((self.stage / "assets" / name).read_bytes(), (self.root / name).read_bytes())
-        self.assertEqual(receipt["build_argv"], ci.SEED_EXPORT_ARGV)
+        self.assertEqual(receipt["r1_argv"], self.argv["R1"])
+        self.assertEqual(self.argv["R1"].count("-o"), 1)
+        self.assertTrue(all("-o" not in self.argv[name] for name in ("M0", "M1", "M2", "R2", "R3")))
         self.assertEqual(ci.COMMANDS, ("M0", "M1", "M2", "R1", "R2", "R3"))
         previous = (self.stage / "association.json").read_bytes()
         with self.assertRaises(FileExistsError):
-            ci.verify_seed_export(self.root)  # Never overwrite a prior receipt.
+            ci.verify_seed_exercised(self.root)  # Never overwrite a prior receipt.
         self.assertEqual((self.stage / "association.json").read_bytes(), previous)
 
     def test_producer_context_and_closed_driver_prefix(self):
@@ -940,7 +962,10 @@ class SeedArtifactControls(unittest.TestCase):
                 "missing": "missing/extra command outcome", "unknown-owner": "failed/unknown command outcome",
                 "argv": "artifact command argv drift", "typed-event": "invalid test identity type",
             }[label])
-            self.assertEqual(json.loads((self.stage / "failure.json").read_bytes())["phase"], "INPUT_QUALIFICATION")
+            failed = json.loads((self.stage / "failure.json").read_bytes())
+            self.assertEqual(failed["phase"], "INPUT_QUALIFICATION")
+            self.assertEqual(failed["reason_code"], "ARGV_DRIFT" if label == "argv" else
+                             "INCOMPLETE_RUN" if label != "typed-event" else "UNKNOWN")
             self.assertFalse((self.stage / "association.json").exists())
 
     def test_same_source_does_not_excuse_binary_hash_size_or_elf_mismatch(self):
@@ -953,7 +978,9 @@ class SeedArtifactControls(unittest.TestCase):
             with self.subTest(label=label), self.assertRaises(ci.Refused) as rejected:
                 self.verify()
             self.assertIsInstance(rejected.exception.__cause__, ci.Refused)
-            self.assertEqual(str(rejected.exception.__cause__), "export differs from exercised seed executable" if label in ("hash", "size") else "export target ELF identity")
+            self.assertEqual(str(rejected.exception.__cause__), "retained binary differs from exercised seed executable" if label in ("hash", "size") else "export target ELF identity")
+            failed = json.loads((self.stage / "failure.json").read_bytes())
+            self.assertEqual(failed["reason_code"], "BINARY_MISMATCH" if label in ("hash", "size") else "BINARY_IDENTITY")
             self.assertEqual(json.loads((self.stage / "failure.json").read_bytes())["phase"], "INPUT_QUALIFICATION")
             self.assertFalse((self.stage / "association.json").exists())
 
@@ -984,7 +1011,9 @@ class SeedArtifactControls(unittest.TestCase):
                 "list": "tracked inventory drift/shape", "dirty": "dirty/untracked source",
                 "go.sum": "unexpected go.sum", "unknown-file": "unknown/link/special artifact entry",
             }[label])
-            self.assertEqual(json.loads((self.stage / "failure.json").read_bytes())["phase"], "INPUT_QUALIFICATION")
+            failed = json.loads((self.stage / "failure.json").read_bytes())
+            self.assertEqual(failed["phase"], "INPUT_QUALIFICATION")
+            self.assertEqual(failed["reason_code"], "ARTIFACT_SHAPE" if label == "unknown-file" else "SOURCE_DRIFT")
 
     def test_source_asset_drift_or_missing_embedded_bytes_refuse(self):
         name = "internal/broker/testdata/execution-session-a2-input.txt"
@@ -995,13 +1024,15 @@ class SeedArtifactControls(unittest.TestCase):
             self.verify()
         self.assertIsInstance(changed.exception.__cause__, ci.Refused)
         self.assertEqual(str(changed.exception.__cause__), "pinned asset/source drift")
-        self.assertEqual(json.loads((self.stage / "failure.json").read_bytes())["phase"], "INPUT_QUALIFICATION")
+        failed = json.loads((self.stage / "failure.json").read_bytes())
+        self.assertEqual(failed["phase"], "INPUT_QUALIFICATION")
+        self.assertEqual(failed["reason_code"], "ASSET_DRIFT")
         self.assertFalse((self.stage / "assets").exists())
         path.unlink()
         with self.assertRaises(ci.Refused) as missing:
             self.verify()
         self.assertIsInstance(missing.exception.__cause__, FileNotFoundError)
-        self.assertEqual(json.loads((self.stage / "failure.json").read_bytes())["reason_type"], "FileNotFoundError")
+        self.assertEqual(json.loads((self.stage / "failure.json").read_bytes())["reason_code"], "UNKNOWN")
         self.assertEqual(json.loads((self.stage / "failure.json").read_bytes())["phase"], "INPUT_QUALIFICATION")
         self.assertFalse((self.stage / "association.json").exists())
 
@@ -1012,7 +1043,10 @@ class SeedArtifactControls(unittest.TestCase):
         with self.assertRaises(ci.Refused) as link:
             self.verify()
         self.assertEqual(str(link.exception.__cause__), "unknown/link/special artifact entry")
-        self.assertEqual(json.loads((self.stage / "failure.json").read_bytes())["phase"], "INPUT_QUALIFICATION")
+        failed = json.loads((self.stage / "failure.json").read_bytes())
+        self.assertEqual(failed["phase"], "INPUT_QUALIFICATION")
+        self.assertEqual(failed["reason_code"], "ARTIFACT_SHAPE")
+        self.assertEqual(next(item for item in failed["evidence"] if item["path"] == "broker.test")["status"], "UNKNOWN")
         path.unlink()
         path.write_bytes(self.binary)
         original_lstat = Path.lstat
@@ -1021,7 +1055,7 @@ class SeedArtifactControls(unittest.TestCase):
         with patch.object(Path, "lstat", special), self.assertRaises(ci.Refused) as special_file:
             self.verify()
         self.assertEqual(str(special_file.exception.__cause__), "unknown/link/special artifact entry")
-        self.assertEqual(json.loads((self.stage / "failure.json").read_bytes())["phase"], "INPUT_QUALIFICATION")
+        self.assertEqual(json.loads((self.stage / "failure.json").read_bytes())["reason_code"], "ARTIFACT_SHAPE")
         with patch.object(ci, "SEED_BINARY_MAX", 127), self.assertRaises(ci.Refused) as producer_cap:
             self.verify()
         # This whole-verifier case reaches producer admission before file stat.
@@ -1034,6 +1068,37 @@ class SeedArtifactControls(unittest.TestCase):
             opened.assert_not_called()
         self.assertFalse((self.stage / "association.json").exists())
 
+    def test_missing_oversize_and_unstable_retained_binary_never_publish(self):
+        path = self.directory / "broker.test"
+        path.unlink()
+        with self.assertRaises(ci.Refused) as missing:
+            self.verify()
+        self.assertEqual(str(missing.exception.__cause__), "missing artifact file")
+        self.assertEqual(json.loads((self.stage / "failure.json").read_bytes())["reason_code"], "ARTIFACT_MISSING")
+        self.assertFalse((self.stage / "association.json").exists())
+        with path.open("wb") as handle:
+            handle.truncate(ci.SEED_BINARY_MAX + 1)
+        with self.assertRaises(ci.Refused) as oversized:
+            self.verify()
+        self.assertEqual(str(oversized.exception.__cause__), "artifact file shape/cap")
+        failed = json.loads((self.stage / "failure.json").read_bytes())
+        self.assertEqual(failed["reason_code"], "ARTIFACT_SHAPE_OR_CAP")
+        self.assertEqual(next(item for item in failed["evidence"] if item["path"] == "broker.test")["status"], "UNKNOWN")
+        self.assertFalse((self.stage / "association.json").exists())
+        path.write_bytes(self.binary)
+        original_stream = ci.seed_stream
+        def unstable(root, relative, *args, **kwargs):
+            if root == self.root and relative == ci.SEED_R1_OUTPUT:
+                raise ci.Refused("artifact changed after close")
+            return original_stream(root, relative, *args, **kwargs)
+        with patch.object(ci, "seed_stream", unstable), self.assertRaises(ci.Refused) as changed:
+            self.verify()
+        self.assertEqual(str(changed.exception.__cause__), "artifact changed after close")
+        failed = json.loads((self.stage / "failure.json").read_bytes())
+        self.assertEqual(failed["reason_code"], "ARTIFACT_UNSTABLE")
+        self.assertEqual(next(item for item in failed["evidence"] if item["path"] == "broker.test")["status"], "UNKNOWN")
+        self.assertFalse((self.stage / "association.json").exists())
+
     def test_archive_component_and_total_limits_refuse_without_receipt(self):
         for label, name, value in (("asset", "SEED_ASSETS_MAX", 1), ("total", "SEED_TOTAL_MAX", 1)):
             with self.subTest(label=label), patch.object(ci, name, value), self.assertRaises(ci.Refused) as rejected:
@@ -1043,87 +1108,59 @@ class SeedArtifactControls(unittest.TestCase):
                              "asset aggregate cap" if label == "asset" else "artifact total cap")
             self.assertEqual(json.loads((self.stage / "failure.json").read_bytes())["phase"], "INPUT_QUALIFICATION")
             self.assertFalse((self.stage / "association.json").exists())
-        with (self.directory / "export.stderr.txt").open("wb") as handle:
-            handle.truncate(1048577)  # Sparse fixture; no large output allocation.
-        with self.assertRaises(ci.Refused) as log_cap:
-            self.verify()
-        self.assertEqual(str(log_cap.exception.__cause__), "artifact file shape/cap")
-        self.assertEqual(json.loads((self.stage / "failure.json").read_bytes())["phase"], "INPUT_QUALIFICATION")
 
     def test_unknown_mode_and_unexpected_exception_never_start_go(self):
         with patch.object(ci, "main", side_effect=AssertionError("unknown mode reached controller")) as controller, \
-             patch.object(ci, "seed_export_main", side_effect=AssertionError("unknown mode reached verifier")) as verifier, \
+             patch.object(ci, "seed_exercised_main", side_effect=AssertionError("unknown mode reached verifier")) as verifier, \
              patch.object(ci.sys, "stderr", io.StringIO()):
-            self.assertEqual(ci.entry(["--verify-j1-seed-export", "unexpected"]), 1)
+            self.assertEqual(ci.entry(["--verify-j1-seed-exercised", "unexpected"]), 1)
             controller.assert_not_called()
             verifier.assert_not_called()
-        with patch.object(ci, "verify_seed_export", side_effect=RuntimeError("synthetic metadata fault")) as verify, \
+        with patch.object(ci, "verify_seed_exercised", side_effect=RuntimeError("synthetic metadata fault")) as verify, \
              patch.object(ci.sys, "stderr", io.StringIO()) as stderr:
-            self.assertEqual(ci.seed_export_main(), 1)
+            self.assertEqual(ci.seed_exercised_main(), 1)
             verify.assert_called_once()
             self.assertIn("RuntimeError: synthetic metadata fault", stderr.getvalue())
 
 
-    def test_missing_invalid_and_nonzero_compiler_exit_never_qualify(self):
-        path = self.directory / "export.exit.txt"
-        for label, raw, expected in (("missing", None, None), ("invalid", b"00\n", None),
-                                     ("nonzero", b"2\n", 2), ("signal-status", b"137\n", 137)):
-            if raw is None:
-                path.unlink(missing_ok=True)
-            else:
-                path.write_bytes(raw)
+    def test_r1_failure_and_unknown_binary_remain_unqualified(self):
+        for label, change in (("nonzero", {"exit": 2}), ("unfinished", {"stream_eof": [True, False]}),
+                              ("unknown", {"identity_unknown": True})):
+            self.summary["commands"]["R1"].update(change)
+            self.save_summary()
             with self.subTest(label=label), self.assertRaises(ci.Refused) as rejected:
                 self.verify()
-            cause = rejected.exception.__cause__
-            if label == "missing":
-                self.assertIsInstance(cause, FileNotFoundError)
-            else:
-                self.assertIsInstance(cause, ci.Refused)
-                self.assertEqual(str(cause), "unknown/invalid compiler exit" if label == "invalid" else
-                                 "compiler did not succeed")
+            self.assertEqual(str(rejected.exception.__cause__), "failed/unknown command outcome")
             failed = json.loads((self.stage / "failure.json").read_bytes())
-            self.assertEqual(failed["status"], "FAILED")
-            self.assertEqual(failed["phase"], "INPUT_QUALIFICATION")
-            self.assertEqual(failed["compiler_exit"], expected)
-            self.assertEqual(failed["compiler_exit_state"], "UNKNOWN" if expected is None else "KNOWN")
+            self.assertEqual(failed["schema"], "outfitter.j1-linux-helper-failure/v2")
+            self.assertEqual(failed["reason_code"], "INCOMPLETE_RUN")
+            self.assertNotIn("compiler_exit", failed)
+            self.assertNotIn("reason_type", failed)
             self.assertFalse((self.stage / "broker.test").exists())
-            self.assertFalse((self.stage / "assets").exists())
             self.assertFalse((self.stage / "association.json").exists())
+            self.summary["commands"]["R1"].update(exit=0, stream_eof=[True, True], identity_unknown=False)
 
-    def test_failed_compiler_stages_only_bounded_known_diagnostics(self):
-        (self.directory / "export.exit.txt").write_bytes(b"1\n")
-        (self.directory / "export.stdout.txt").write_bytes(b"bounded compiler diagnostic\n")
-        with (self.directory / "export.stderr.txt").open("wb") as handle:
-            handle.truncate(1048577)
-        (self.directory / "metadata/status.after.txt").unlink()
-        opened, original_open = [], ci.os.open
-        def observed_open(path, *args, **kwargs):
-            if Path(path) == self.directory / "export.stderr.txt":
-                opened.append(path)
-                raise AssertionError("oversize log must never be opened/hashed")
-            return original_open(path, *args, **kwargs)
-        with patch.object(ci.os, "open", observed_open), self.assertRaises(ci.Refused) as rejected:
+    def test_failure_binary_hash_is_unqualified_and_unknown_fallback_closed(self):
+        self.meta("status.after.txt", b" M go.mod\n")
+        with self.assertRaises(ci.Refused):
             self.verify()
-        self.assertIsInstance(rejected.exception.__cause__, ci.Refused)
-        self.assertEqual(str(rejected.exception.__cause__), "compiler did not succeed")
-        self.assertEqual(opened, [])
         failed = json.loads((self.stage / "failure.json").read_bytes())
-        self.assertEqual(failed["phase"], "INPUT_QUALIFICATION")
-        self.assertEqual(failed["compiler_exit"], 1)
-        items = {item["path"]: item for item in failed["evidence"]}
-        self.assertEqual(items["export.stderr.txt"], {"path": "export.stderr.txt", "status": "OMITTED_CAP",
-                                                    "bytes": 1048577, "sha256": None})
-        self.assertEqual(items["metadata/status.after.txt"]["status"], "MISSING")
-        self.assertEqual(items["export.stdout.txt"]["status"], "RETAINED")
-        self.assertEqual((self.stage / "export.stdout.txt").read_bytes(), b"bounded compiler diagnostic\n")
-        self.assertEqual((self.stage / "export.exit.txt").read_bytes(), b"1\n")
-        self.assertFalse((self.stage / "export.stderr.txt").exists())
+        binary = next(item for item in failed["evidence"] if item["path"] == "broker.test")
+        self.assertEqual(binary, {"path": "broker.test", "status": "UNQUALIFIED_HASH", **self.pair})
+        self.assertEqual(failed["reason_code"], "SOURCE_DRIFT")
         self.assertFalse((self.stage / "broker.test").exists())
+        (self.directory / "broker.test").unlink()
+        with self.assertRaises(ci.Refused):
+            self.verify()
+        failed = json.loads((self.stage / "failure.json").read_bytes())
+        binary = next(item for item in failed["evidence"] if item["path"] == "broker.test")
+        self.assertEqual(binary, {"path": "broker.test", "status": "UNKNOWN", "bytes": None, "sha256": None})
+        self.assertEqual(ci.seed_failure_code(ci.Refused("unclassified secret /path")), "UNKNOWN")
         workflow = (Path(ci.__file__).resolve().parent.parent / ".github/workflows/broker.yml").read_text()
         uploads = workflow.split("- name: Save sanitized local acceptance evidence", 1)[1]
         self.assertIn(".runtime/j1-seed-helper/", uploads)
-        self.assertNotIn(".runtime/j1-seed-export", uploads)
-        self.assertEqual(workflow.count("go test -race -json -count=1 -timeout=600s -c"), 1)
+        self.assertNotIn(".runtime/j1-seed-exercised", uploads)
+        self.assertNotIn("go test -race -json -count=1 -timeout=600s -c", workflow)
 
     def test_short_copy_checked_close_and_destination_hash_faults_have_no_success_receipt(self):
         original_open, original_stream = Path.open, ci.seed_stream
@@ -1168,6 +1205,8 @@ class SeedArtifactControls(unittest.TestCase):
             failed = json.loads((self.stage / "failure.json").read_bytes())
             self.assertEqual(failed["status"], "FAILED")
             self.assertEqual(failed["phase"], "COPY_OR_PUBLICATION")
+            self.assertEqual(failed["reason_code"], "COPY_FAILED" if fault == "short-copy" else
+                             "PUBLICATION_FAILED" if fault == "destination-hash" else "UNKNOWN")
 
     def test_success_receipt_is_last_and_publication_errors_cannot_qualify(self):
         original_rename, original_open = ci.os.rename, Path.open

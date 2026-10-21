@@ -575,7 +575,7 @@ def run(evidence, name, argv, gate=None, runtime=False):
 # One fixed, file-only artifact verifier. It never runs a command, installs a
 # signal handler, or borrows the original-process controller's authority.
 SEED_DIRECTORY = ".runtime/j1-seed-helper"
-SEED_RAW_DIRECTORY = ".runtime/j1-seed-export"
+SEED_RAW_DIRECTORY = ".runtime/j1-seed-exercised"
 SEED_POSITIVE = "TestExecutionSessionActualOwnerLifecycleAndInertStage"
 SEED_BOUNDARY = "TestExecutionSessionSeedBoundaryControls"
 SEED_HELPER = "TestExecutionPrivateSessionSeedHelper"
@@ -583,8 +583,7 @@ SEED_BINARY_MAX = 64 * 1024 * 1024
 SEED_ASSET_MAX = 262144
 SEED_ASSETS_MAX = 3 * 1024 * 1024
 SEED_TOTAL_MAX = 75497472
-SEED_EXPORT_ARGV = ["go", "test", "-race", "-json", "-count=1", "-timeout=600s",
-                    "-c", "-o", SEED_RAW_DIRECTORY + "/broker.test", "./internal/broker"]
+SEED_R1_OUTPUT = SEED_RAW_DIRECTORY + "/broker.test"
 SEED_ASSETS = {
     "go.mod": {
         "bytes": 58,
@@ -639,8 +638,18 @@ SEED_PRODUCER = re.compile(
 SEED_METADATA = {"source-id.before.txt": 256, "source-id.after.txt": 256,
                  "tracked.before.nul": 131072, "tracked.after.nul": 131072,
                  "status.before.txt": 65536, "status.after.txt": 65536}
-SEED_INITIAL_FILES = {"broker.test", "export.stdout.txt", "export.stderr.txt", "export.exit.txt",
-                      *("metadata/" + name for name in SEED_METADATA)}
+SEED_BEFORE_FILES = {"metadata/" + name for name in SEED_METADATA if name.endswith(".before.txt") or name.endswith(".before.nul")}
+SEED_INITIAL_FILES = {"broker.test", *("metadata/" + name for name in SEED_METADATA)}
+
+
+def seed_prelaunch(root):
+    """Refuse a prior binary, including a dangling link, before the sole R1 run."""
+    seed_shape(root, SEED_BEFORE_FILES, SEED_RAW_DIRECTORY)
+    try:
+        (root / SEED_R1_OUTPUT).lstat()
+    except FileNotFoundError:
+        return
+    raise Refused("preexisting exercised binary")
 
 
 def seed_stream(root, relative, cap=None, consume=None):
@@ -755,11 +764,9 @@ def seed_encode(value):
     return (json.dumps(value, sort_keys=True, indent=2) + "\n").encode()
 
 
-def seed_validate_export(root, compiler_exit):
+def seed_validate_exercised(root):
     """Validate every input before any binary or asset can enter the archive."""
-    require(compiler_exit == 0, "compiler did not succeed")
     seed_shape(root, SEED_INITIAL_FILES, SEED_RAW_DIRECTORY)
-    directory = root / SEED_RAW_DIRECTORY
     metadata = {name: seed_bytes(root, SEED_RAW_DIRECTORY + "/metadata/" + name, cap)
                 for name, cap in SEED_METADATA.items()}
     require(sum(map(len, metadata.values())) <= 393728, "artifact metadata aggregate cap")
@@ -834,7 +841,8 @@ def seed_validate_export(root, compiler_exit):
     gates = {"M2": listed}
     for name, parents, pattern in zip(("R1", "R2"), selection["groups"], selection["patterns"]):
         gates[name] = Events({BROKER: packages[BROKER]}, parents)
-        expected_argv[name] = [*flags, "-run=" + pattern, "./internal/broker"]
+        expected_argv[name] = [*flags, *(["-o", SEED_R1_OUTPUT] if name == "R1" else []),
+                               "-run=" + pattern, "./internal/broker"]
     others = {name: value for name, value in packages.items() if name != BROKER}
     gates["R3"] = Events(others)
     expected_argv["R3"] = [*flags, *others]
@@ -855,39 +863,29 @@ def seed_validate_export(root, compiler_exit):
                 outcome["sha256"] == [observed[name]["sha256"], stderr["sha256"]], "artifact capture drift")
         require(outcome["coverage"] == (gates[name].summary() if name in gates else None),
                 "artifact coverage summary drift")
-    binary, prefix = seed_stream(root, SEED_RAW_DIRECTORY + "/broker.test", SEED_BINARY_MAX)
+    binary, prefix = seed_stream(root, SEED_R1_OUTPUT, SEED_BINARY_MAX)
     machines = {"amd64": 62, "arm64": 183}
     require(binary["bytes"] >= 64 and prefix[:7] == b"\x7fELF\x02\x01\x01" and
             provenance["GOARCH"] in machines and
             int.from_bytes(prefix[18:20], "little") == machines[provenance["GOARCH"]], "export target ELF identity")
-    require(binary == records[0], "export differs from exercised seed executable")
-    for name in ("export.stdout.txt", "export.stderr.txt"):
-        seed_stream(root, SEED_RAW_DIRECTORY + "/" + name, 1048576)
+    require(binary == records[0], "retained binary differs from exercised seed executable")
     asset_size = sum(pin["bytes"] for pin in SEED_ASSETS.values())
     require(asset_size <= SEED_ASSETS_MAX, "asset aggregate cap")
-    receipt = {"schema": "outfitter.j1-linux-helper-association/v1", "status": "MATCHED_BINARY",
+    receipt = {"schema": "outfitter.j1-linux-helper-association/v2", "status": "MATCHED_BINARY",
                "checkout_head": head, "checkout_tree": tree,
                "checkout_relation": "ACTUAL_CHECKOUT; ROOT_PARENT_TREE_API_REVIEW_REQUIRED",
                "source_inventory_sha256": hashlib.sha256(inventory_raw).hexdigest(),
                "source_files": len(inventory), "go_sum": "ABSENT",
                "environment": {k: provenance[k] for k in ("GOOS", "GOARCH", "CGO_ENABLED", "GOVERSION", "GOFLAGS", "GOWORK")},
-               "build_argv": SEED_EXPORT_ARGV, "build_exit": compiler_exit,
-               "producer": {"package": BROKER, "test": SEED_POSITIVE, **records[0]}, "export": binary,
+               "r1_argv": expected_argv["R1"], "r1_exit": outcomes["R1"]["exit"],
+               "r1_meaning": "COMPILE_AND_TEST", "producer": {"package": BROKER, "test": SEED_POSITIVE, **records[0]},
+               "exercised_binary": binary,
                "assets": SEED_ASSETS, "compiler_attestation": False,
                "downstream_acceptance": "STILL_REQUIRED", "full_ci_acceptance": "ROOT_REVIEW_REQUIRED",
                "margin": "UNKNOWN"}
     receipt_raw = seed_encode(receipt)
     require(len(receipt_raw) <= 16384, "association receipt cap")
-    sources = {"broker.test": (SEED_RAW_DIRECTORY + "/broker.test", binary, SEED_BINARY_MAX)}
-    for name, cap in (("export.stdout.txt", 1048576), ("export.stderr.txt", 1048576), ("export.exit.txt", 4)):
-        relative = SEED_RAW_DIRECTORY + "/" + name
-        if name == "export.exit.txt":
-            raw = seed_bytes(root, relative, cap)
-            require(raw == (str(compiler_exit) + "\n").encode(), "compiler exit changed after parse")
-            pin = {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
-        else:
-            pin = seed_stream(root, relative, cap)[0]
-        sources[name] = (relative, pin, cap)
+    sources = {"broker.test": (SEED_R1_OUTPUT, binary, SEED_BINARY_MAX)}
     for name, cap in SEED_METADATA.items():
         relative = SEED_RAW_DIRECTORY + "/metadata/" + name
         raw = metadata[name]
@@ -898,13 +896,6 @@ def seed_validate_export(root, compiler_exit):
     require(sum(pin["bytes"] for _, pin, _ in sources.values()) + len(inventory_raw) + len(receipt_raw) <=
             SEED_TOTAL_MAX, "artifact total cap")
     return receipt, sources, inventory_raw
-
-
-def seed_compiler_exit(root):
-    raw = seed_bytes(root, SEED_RAW_DIRECTORY + "/export.exit.txt", 4)
-    require(re.fullmatch(rb"(?:0|[1-9][0-9]{0,2})\n", raw) and int(raw) <= 255,
-            "unknown/invalid compiler exit")
-    return int(raw)
 
 
 def seed_publish(root, temporary, directory, name, pin, cap, source=None, raw=None):
@@ -927,10 +918,48 @@ def seed_publish(root, temporary, directory, name, pin, cap, source=None, raw=No
     require(seed_stream(directory, name, cap)[0] == pin, "published artifact hash/close")
 
 
-def seed_failure(root, directory, compiler_exit, phase, error, temporary, attempted):
+SEED_FAILURE_CODES = {
+    "unknown/link/special artifact entry": "ARTIFACT_SHAPE",
+    "missing artifact file": "ARTIFACT_MISSING",
+    "artifact file shape/cap": "ARTIFACT_SHAPE_OR_CAP",
+    "artifact grew/cap": "ARTIFACT_UNSTABLE",
+    "artifact changed during read": "ARTIFACT_UNSTABLE",
+    "artifact changed after close": "ARTIFACT_UNSTABLE",
+    "artifact open identity": "ARTIFACT_UNSTABLE",
+    "dirty/untracked source": "SOURCE_DRIFT",
+    "checkout identity drift/shape": "SOURCE_DRIFT",
+    "tracked inventory drift/shape": "SOURCE_DRIFT",
+    "tracked inventory/asset/absence shape": "SOURCE_DRIFT",
+    "unexpected go.sum": "SOURCE_DRIFT",
+    "pinned asset/source drift": "ASSET_DRIFT",
+    "incomplete/failed six-command summary": "INCOMPLETE_RUN",
+    "missing/extra command outcome": "INCOMPLETE_RUN",
+    "failed/unknown command outcome": "INCOMPLETE_RUN",
+    "artifact command argv drift": "ARGV_DRIFT",
+    "missing executable producer": "PRODUCER_MISSING",
+    "duplicate/oversize executable producer": "PRODUCER_INVALID",
+    "wrong/malformed executable producer": "PRODUCER_INVALID",
+    "unqualified seed parent/leaf": "SEED_FAILED",
+    "export target ELF identity": "BINARY_IDENTITY",
+    "retained binary differs from exercised seed executable": "BINARY_MISMATCH",
+    "short artifact copy": "COPY_FAILED",
+    "artifact input changed during copy": "COPY_FAILED",
+    "artifact copy/close/hash": "COPY_FAILED",
+    "short artifact write": "PUBLICATION_FAILED",
+    "artifact write/close/hash": "PUBLICATION_FAILED",
+    "published artifact hash/close": "PUBLICATION_FAILED",
+    "retained input hash drift": "PUBLICATION_FAILED",
+    "retained inventory hash drift": "PUBLICATION_FAILED",
+}
+
+
+def seed_failure_code(error):
+    return SEED_FAILURE_CODES.get(str(error), "UNKNOWN") if isinstance(error, Refused) else "UNKNOWN"
+
+
+def seed_failure(root, directory, phase, error, temporary, attempted):
     evidence = []
-    candidates = {"export.exit.txt": 4, "export.stdout.txt": 1048576, "export.stderr.txt": 1048576,
-                  **{"metadata/" + name: cap for name, cap in SEED_METADATA.items()}}
+    candidates = {"metadata/" + name: cap for name, cap in SEED_METADATA.items()}
     for name, cap in candidates.items():
         item = {"path": name, "status": "IO_UNKNOWN", "bytes": None, "sha256": None}
         try:
@@ -957,10 +986,15 @@ def seed_failure(root, directory, compiler_exit, phase, error, temporary, attemp
         except BaseException:
             item["status"] = "IO_UNKNOWN"
         evidence.append(item)
-    failure = {"schema": "outfitter.j1-linux-helper-failure/v1", "status": "FAILED",
-               "phase": phase, "compiler_exit": compiler_exit,
-               "compiler_exit_state": "KNOWN" if compiler_exit is not None else "UNKNOWN",
-               "reason_type": type(error).__name__, "evidence": evidence,
+    binary = {"path": "broker.test", "status": "UNKNOWN", "bytes": None, "sha256": None}
+    try:
+        pin, _ = seed_stream(root, SEED_R1_OUTPUT, SEED_BINARY_MAX)
+        binary.update(status="UNQUALIFIED_HASH", **pin)
+    except BaseException:
+        pass
+    evidence.append(binary)
+    failure = {"schema": "outfitter.j1-linux-helper-failure/v2", "status": "FAILED",
+               "phase": phase, "reason_code": seed_failure_code(error), "evidence": evidence,
                "partial_stage": "UNQUALIFIED", "full_ci_acceptance": "FAILED_OR_INCOMPLETE",
                "compiler_attestation": False}
     # This bounded FAILED record can survive even when the raw root is missing.
@@ -969,15 +1003,14 @@ def seed_failure(root, directory, compiler_exit, phase, error, temporary, attemp
     os.rename(directory / "failure.pending", directory / "failure.json")
 
 
-def verify_seed_export(root):
+def verify_seed_exercised(root):
     """One fresh staging attempt; association alone never authorizes execution."""
     require(stat.S_ISDIR((root / ".runtime").lstat().st_mode), "artifact parent shape")
     directory = root / SEED_DIRECTORY
     directory.mkdir()  # No adoption, cleanup or retry of an existing stage.
-    compiler_exit, temporary, phase, attempted = None, None, "INPUT_QUALIFICATION", set()
+    temporary, phase, attempted = None, "INPUT_QUALIFICATION", set()
     try:
-        compiler_exit = seed_compiler_exit(root)
-        receipt, sources, inventory_raw = seed_validate_export(root, compiler_exit)
+        receipt, sources, inventory_raw = seed_validate_exercised(root)
         temporary = root / SEED_RAW_DIRECTORY / "retention"
         temporary.mkdir()  # Raw temporary files are never uploaded.
         phase = "COPY_OR_PUBLICATION"
@@ -1013,13 +1046,13 @@ def verify_seed_export(root):
                 temporary.mkdir()
             except BaseException:
                 temporary = None
-        seed_failure(root, directory, compiler_exit, phase, error, temporary, attempted)
+        seed_failure(root, directory, phase, error, temporary, attempted)
         raise Refused("J1 artifact qualification failed: " + phase) from error
 
 
-def seed_export_main():
+def seed_exercised_main():
     try:
-        verify_seed_export(Path(__file__).resolve().parent.parent)
+        verify_seed_exercised(Path(__file__).resolve().parent.parent)
         return 0
     except BaseException as error:
         print("J1 artifact FAILED: " + type(error).__name__ + ": " + str(error), file=sys.stderr)
@@ -1027,8 +1060,8 @@ def seed_export_main():
 
 
 def entry(arguments):
-    if arguments == ["--verify-j1-seed-export"]:
-        return seed_export_main()
+    if arguments == ["--verify-j1-seed-exercised"]:
+        return seed_exercised_main()
     if arguments:
         print("unsupported CI arguments", file=sys.stderr)
         return 1
@@ -1062,7 +1095,10 @@ def main():
         selection = partition(listed.names)
         evidence.write("partition.json", selection)
         for name, parents, pattern in zip(("R1", "R2"), selection["groups"], selection["patterns"]):
-            run(evidence, name, [*flags, "-run=" + pattern, "./internal/broker"],
+            if name == "R1":
+                seed_prelaunch(root)
+            run(evidence, name, [*flags, *(["-o", SEED_R1_OUTPUT] if name == "R1" else []),
+                                 "-run=" + pattern, "./internal/broker"],
                 Events({BROKER: packages[BROKER]}, parents), runtime=True)
         others = {n: p for n, p in packages.items() if n != BROKER}
         run(evidence, "R3", [*flags, *others], Events(others), runtime=True)

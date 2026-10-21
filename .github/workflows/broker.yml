@@ -25,6 +25,11 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p .runtime
+          mkdir .runtime/j1-seed-exercised
+          mkdir .runtime/j1-seed-exercised/metadata
+          git rev-parse HEAD 'HEAD^{tree}' > .runtime/j1-seed-exercised/metadata/source-id.before.txt
+          git ls-files -z > .runtime/j1-seed-exercised/metadata/tracked.before.nul
+          git status --porcelain=v1 --untracked-files=all > .runtime/j1-seed-exercised/metadata/status.before.txt
           python3 -B -m unittest discover -s scripts -p test_ci_race_partition.py
           python3 -B scripts/ci_race_partition.py
           go vet ./...
@@ -32,22 +37,11 @@ jobs:
       - name: Build local broker
         run: |
           set -euo pipefail
-          mkdir .runtime/j1-seed-export
-          mkdir .runtime/j1-seed-export/metadata
-          git rev-parse HEAD 'HEAD^{tree}' > .runtime/j1-seed-export/metadata/source-id.before.txt
-          git ls-files -z > .runtime/j1-seed-export/metadata/tracked.before.nul
-          git status --porcelain=v1 --untracked-files=all > .runtime/j1-seed-export/metadata/status.before.txt
           go build -o bin/outfitter ./cmd/outfitter
-          set +e
-          go test -race -json -count=1 -timeout=600s -c -o .runtime/j1-seed-export/broker.test ./internal/broker \
-            < /dev/null > .runtime/j1-seed-export/export.stdout.txt 2> .runtime/j1-seed-export/export.stderr.txt
-          seed_export_status=$?
-          set -e
-          printf '%s\n' "$seed_export_status" > .runtime/j1-seed-export/export.exit.txt
-          git rev-parse HEAD 'HEAD^{tree}' > .runtime/j1-seed-export/metadata/source-id.after.txt
-          git ls-files -z > .runtime/j1-seed-export/metadata/tracked.after.nul
-          git status --porcelain=v1 --untracked-files=all > .runtime/j1-seed-export/metadata/status.after.txt
-          python3 -B scripts/ci_race_partition.py --verify-j1-seed-export
+          git rev-parse HEAD 'HEAD^{tree}' > .runtime/j1-seed-exercised/metadata/source-id.after.txt
+          git ls-files -z > .runtime/j1-seed-exercised/metadata/tracked.after.nul
+          git status --porcelain=v1 --untracked-files=all > .runtime/j1-seed-exercised/metadata/status.after.txt
+          python3 -B scripts/ci_race_partition.py --verify-j1-seed-exercised
       - name: Prepare pinned public Python image
         run: docker pull "$PYTHON_IMAGE"
       - name: Actual Docker adapter lifecycle
