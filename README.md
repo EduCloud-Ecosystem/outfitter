@@ -1,5 +1,13 @@
 # Outfitter
 
+
+<!-- educloud-status-badges:start -->
+[![License](https://img.shields.io/github/license/EduCloud-Ecosystem/outfitter)](https://github.com/EduCloud-Ecosystem/outfitter/blob/main/LICENSING.md)
+[![Broker tests](https://github.com/EduCloud-Ecosystem/outfitter/actions/workflows/broker.yml/badge.svg?branch=main)](https://github.com/EduCloud-Ecosystem/outfitter/actions/workflows/broker.yml)
+[![Open issues](https://img.shields.io/github/issues/EduCloud-Ecosystem/outfitter)](https://github.com/EduCloud-Ecosystem/outfitter/issues)
+[![Contributing](https://img.shields.io/badge/contributions-guide-blue)](https://github.com/EduCloud-Ecosystem/outfitter/blob/main/CONTRIBUTING.md)
+<!-- educloud-status-badges:end -->
+
 > Working name — the compute-provisioning and brokering layer of EduCloud.
 > (Repo/module name may change at the publish step; set in one atomic commit.)
 
