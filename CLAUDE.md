@@ -64,3 +64,7 @@ Where things are: `../educloud/SYSTEM.md` (shared contracts),
 (isolation tiers) is platform-level, not broker-only — Cairn and Belay both
 consume it; `specs/07` is reserved for the endpoint manifest, don't claim it
 for anything else.
+
+## Pilot implementation standard
+
+Follow `AGENTS.md` and `docs/development/PILOT_PROTOCOL_V1.md` in addition to this component guidance. The classroom pilot tutor is `belay-classroom`; original Belay is a separate line. Current integration and release evidence live in the educloud README and `pilot/` records.
