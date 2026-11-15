@@ -1,0 +1,12 @@
+{
+  "protocol_version": "educloud-pilot-v1",
+  "protocol_sha256": "099b676f0763440c7979657971260ed417750c73dd2954960ff8cb81bf9c6ce6",
+  "repository": "outfitter",
+  "authority": "Placement, finite lifetime, cleanup and resource liabilities",
+  "pilot_role": "Conditional on broker-managed compute",
+  "required_workflows": [
+    "broker.yml"
+  ],
+  "local_verification": "Use broker.yml for Go race/static checks and pinned Docker acceptance.",
+  "integration_verification": "Preserve placement/reservation authority; qualify actual provider cleanup before adoption. Local Docker is not native cloud acceptance."
+}
