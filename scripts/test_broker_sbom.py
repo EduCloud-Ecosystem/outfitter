@@ -116,6 +116,17 @@ class BrokerSbomTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'CGO libraries'):
             sbom.verify_linkage({'CGO_ENABLED': '1'}, {'linkage': 'static'})
 
+    def test_native_package_ownership_follows_package_database_path_aliases(self):
+        target = sbom.ROOT / 'libc.so.6'
+        target.write_bytes(b'libc')
+        alias = sbom.ROOT / 'alias'
+        alias.symlink_to(target)
+        empty = subprocess.CompletedProcess([], 1, '', '')
+        found = subprocess.CompletedProcess([], 0, f'libc6:amd64: {alias}\n', '')
+        with (patch.object(sbom.subprocess, 'run', side_effect=lambda args, **kwargs: found if args[-1].startswith('*/') else empty),
+              patch.object(sbom, 'run', return_value='libc6:amd64\t2.43-1\tamd64\tinstalled')):
+            self.assertEqual(sbom.native_package(str(target))['name'], 'libc6:amd64')
+
     def test_changed_binary_or_source_cannot_get_acceptance_receipt(self):
         with patch.object(sbom, 'run', return_value=REVISION + '\n'):
             self.assertEqual(sbom.snapshot(), self.value)

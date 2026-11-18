@@ -109,15 +109,20 @@ def resolved_libraries(text, interpreter):
 
 
 def native_package(path):
-    candidates = [path, str(Path(path).resolve())]
+    target = Path(path).resolve(strict=True)
+    candidates = [path, str(target), '*/' + target.name]
     owners = set()
     for candidate in dict.fromkeys(candidates):
         result = subprocess.run(['dpkg-query', '--search', candidate], capture_output=True, text=True, check=False)
         for line in result.stdout.splitlines():
             owner, separator, owned_path = line.partition(': ')
-            if separator and owned_path == candidate:
-                owners.add(owner)
-    require(len(owners) == 1, 'native library has no unique Debian package owner')
+            if separator and owned_path.startswith('/'):
+                try:
+                    if Path(owned_path).resolve(strict=True) == target:
+                        owners.add(owner)
+                except OSError:
+                    continue
+    require(len(owners) == 1, f'native library has no unique Debian package owner: {path} ({sorted(owners)})')
     owner, = owners
     record = run('dpkg-query', '--show', '--showformat=${binary:Package}\t${Version}\t${Architecture}\t${db:Status-Status}', owner)
     name, version, architecture, status = record.split('\t')
