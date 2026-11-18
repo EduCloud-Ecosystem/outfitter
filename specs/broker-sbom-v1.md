@@ -1,7 +1,7 @@
 # Linux/amd64 broker SPDX inventory
 
 This pilot starts at main `bfc3ac48acbae7fafb7893ee35a9332f848d5c15` and extends
-the existing broker workflow. CI builds `bin/outfitter` once, captures its hashes
+the existing broker workflow with an independent inventory job. CI builds `bin/outfitter` once, captures its hashes
 and provenance, and runs the existing Docker, recovery and consumer acceptance
 scripts against that binary. Each suite checks the binary hash before and after
 execution and retains a receipt binding the successful report to those bytes.
@@ -26,6 +26,4 @@ native linkage, and unowned libraries. The CI artifact must pass SPDX format and
 relationship validation and checksum verification after download. Runtime Docker
 services, workload images, cloud resources, and deployment have separate records.
 
-The broker job has a 20-minute ceiling to accommodate the additional inventory,
-validation and retention steps alongside the existing race gate. Test deadlines
-and broker workload bounds retain their current values.
+The inventory job has a 10-minute ceiling and reuses the existing acceptance\nscripts. The existing race gate and its retained failure evidence remain\nindependent. An inventory artifact establishes its own verification result.\nRelease decisions also require the applicable broader CI and review gates.
