@@ -109,6 +109,10 @@ class BrokerSbomTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True), patch.object(sbom, 'run', return_value=ELF) as run:
             self.assertEqual(sbom.inspect_native(sbom.BINARY)['linkage'], 'static')
             self.assertEqual(run.call_count, 1)
+        sbom.verify_linkage({'CGO_ENABLED': '0'}, {'linkage': 'static'})
+        sbom.verify_linkage({'CGO_ENABLED': '1'}, {'linkage': 'dynamic'})
+        with self.assertRaisesRegex(ValueError, 'CGO libraries'):
+            sbom.verify_linkage({'CGO_ENABLED': '1'}, {'linkage': 'static'})
 
     def test_changed_binary_or_source_cannot_get_acceptance_receipt(self):
         with patch.object(sbom, 'run', return_value=REVISION + '\n'):
@@ -166,6 +170,9 @@ class BrokerSbomTests(unittest.TestCase):
         doc = json.loads((sbom.OUTPUT / 'outfitter-linux-amd64.spdx.json').read_text())
         broker = doc['packages'][0]
         self.assertEqual(broker['checksums'][1]['checksumValue'], self.value['binary']['sha256'])
+        self.assertTrue(broker['filesAnalyzed'])
+        verification_code = sbom.hashlib.sha1(self.value['binary']['sha1'].encode()).hexdigest()
+        self.assertEqual(broker['packageVerificationCode']['packageVerificationCodeValue'], verification_code)
         self.assertTrue(broker['sourceInfo'].endswith(REVISION))
         self.assertEqual(doc['packages'][1]['versionInfo'], 'go1.26.11')
         for line in (sbom.OUTPUT / 'SHA256SUMS').read_text().splitlines():

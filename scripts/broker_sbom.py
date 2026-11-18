@@ -146,6 +146,11 @@ def inspect_native(binary):
     return {'linkage': 'dynamic', 'binary_elf': metadata, 'libraries': libraries}
 
 
+def verify_linkage(settings, native):
+    require(native['linkage'] != 'static' or settings['CGO_ENABLED'] == '0',
+            'statically linked CGO libraries need separate provenance')
+
+
 def capture():
     revision = run('git', 'rev-parse', 'HEAD').strip()
     require(re.fullmatch('[0-9a-f]{40}', revision), 'invalid Git revision')
@@ -154,8 +159,9 @@ def capture():
     info = json.loads(run('go', 'version', '-m', '-json', str(BINARY)))
     env = json.loads(run('go', 'env', '-json', 'GOOS', 'GOARCH', 'CGO_ENABLED', 'GOVERSION', 'GOFLAGS', 'GOWORK', 'GOMOD'))
     modules = json_stream(run('go', 'list', '-m', '-json', 'all'))
-    verify_build(info, modules, env, revision)
+    settings = verify_build(info, modules, env, revision)
     native = inspect_native(BINARY)
+    verify_linkage(settings, native)
     require(hashes(BINARY) == before, 'binary changed during inspection')
     OUTPUT.mkdir(parents=True)
     write_json(OUTPUT / 'provenance.json', {'revision': revision, 'binary': before,

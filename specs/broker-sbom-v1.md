@@ -11,7 +11,8 @@ the expected Git revision with a clean build, and agreement with the module grap
 and Go environment. It reads ELF headers and dynamic entries, resolves native
 libraries on the CI runner, checks the transitive dependency closure, and records
 the owning installed Debian packages and exact library file hashes. CGO behavior
-continues to follow the current builder.
+continues to follow the current builder. A static executable with CGO enabled
+requires separate provenance for its statically linked native libraries.
 
 After all three acceptance receipts pass, CI retains the exercised executable,
 an SPDX 2.3 document, provenance, receipts, and SHA-256 checksums. The SPDX binary
