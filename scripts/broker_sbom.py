@@ -138,7 +138,8 @@ def inspect_native(binary):
     for name, path in sorted(paths.items()):
         resolved = Path(path).resolve(strict=True)
         elf = inspect(resolved)
-        require(not elf['interpreter'], 'native library has its own interpreter')
+        require(elf['interpreter'] in (None, metadata['interpreter']),
+                'native library uses a different ELF interpreter')
         libraries.append({'soname': name, 'path': path, 'resolved': str(resolved),
                           'hashes': hashes(resolved), 'elf': elf, 'package': native_package(path)})
     required = set(metadata['needed']) | {n for lib in libraries for n in lib['elf']['needed']}

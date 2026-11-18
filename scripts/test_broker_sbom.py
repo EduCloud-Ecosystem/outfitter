@@ -88,8 +88,9 @@ class BrokerSbomTests(unittest.TestCase):
         dynamic = ELF + f' [Requesting program interpreter: {loader}]\n (NEEDED) Shared library: [libc.so.6]\n'
         ldd = f'libc.so.6 => {library} (0x123)\n{loader} (0x456)\n'
         package = {'name': 'libc6:amd64', 'version': '2.43-1', 'architecture': 'amd64'}
+        libc_elf = ELF + f' [Requesting program interpreter: {loader}]\n (NEEDED) Shared library: [ld-linux.so.2]\n'
         with (patch.dict(os.environ, {}, clear=True),
-              patch.object(sbom, 'run', side_effect=[dynamic, ldd, ELF, ELF]),
+              patch.object(sbom, 'run', side_effect=[dynamic, ldd, ELF, libc_elf]),
               patch.object(sbom, 'native_package', return_value=package)):
             result = sbom.inspect_native(sbom.BINARY)
         self.assertEqual(result['linkage'], 'dynamic')
