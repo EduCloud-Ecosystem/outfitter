@@ -53,7 +53,7 @@ def json_stream(raw):
 def verify_build(info, modules, env, revision):
     require(info['Path'] == MODULE + '/cmd/outfitter', 'wrong Go executable')
     require(info['Main']['Path'] == MODULE and not info['Main'].get('Replace'), 'wrong main module')
-    settings = {item['Key']: item['Value'] for item in info['Settings']}
+    settings = {item['Key']: item.get('Value', '') for item in info['Settings']}
     require(len(settings) == len(info['Settings']), 'duplicate build settings')
     require(settings.get('GOOS') == 'linux' and settings.get('GOARCH') == 'amd64', 'wrong Go platform')
     require(settings.get('vcs') == 'git' and settings.get('vcs.revision') == revision

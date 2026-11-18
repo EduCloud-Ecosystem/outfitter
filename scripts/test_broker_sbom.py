@@ -48,6 +48,7 @@ class BrokerSbomTests(unittest.TestCase):
         info = {'Path': sbom.MODULE + '/cmd/outfitter', 'Main': {'Path': sbom.MODULE},
                 'GoVersion': 'go1.26.11',
                 'Settings': [{'Key': key, 'Value': value} for key, value in settings.items()]}
+        info['Settings'].append({'Key': 'CGO_CFLAGS'})
         env = {**settings, 'GOVERSION': 'go1.26.11', 'GOFLAGS': '', 'GOWORK': '',
                'GOMOD': str(sbom.ROOT / 'go.mod')}
         graph = [{'Path': sbom.MODULE, 'Main': True}]
