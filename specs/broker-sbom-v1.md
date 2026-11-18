@@ -25,3 +25,7 @@ or absent suites, foreign source/platform/toolchain/module metadata, unresolved
 native linkage, and unowned libraries. The CI artifact must pass SPDX format and
 relationship validation and checksum verification after download. Runtime Docker
 services, workload images, cloud resources, and deployment have separate records.
+
+The broker job has a 20-minute ceiling to accommodate the additional inventory,
+validation and retention steps alongside the existing race gate. Test deadlines
+and broker workload bounds retain their current values.
