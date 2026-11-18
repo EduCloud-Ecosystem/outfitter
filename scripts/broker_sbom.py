@@ -116,7 +116,8 @@ def native_package(path):
         result = subprocess.run(['dpkg-query', '--search', candidate], capture_output=True, text=True, check=False)
         for line in result.stdout.splitlines():
             owner, separator, owned_path = line.partition(': ')
-            if separator and owned_path.startswith('/'):
+            if (separator and owned_path.startswith('/')
+                    and re.fullmatch(r'[a-z0-9][a-z0-9+.-]*(?::[a-z0-9-]+)?', owner)):
                 try:
                     if Path(owned_path).resolve(strict=True) == target:
                         owners.add(owner)

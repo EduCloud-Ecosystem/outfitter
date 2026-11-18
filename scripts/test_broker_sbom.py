@@ -122,7 +122,8 @@ class BrokerSbomTests(unittest.TestCase):
         alias = sbom.ROOT / 'alias'
         alias.symlink_to(target)
         empty = subprocess.CompletedProcess([], 1, '', '')
-        found = subprocess.CompletedProcess([], 0, f'libc6:amd64: {alias}\n', '')
+        found = subprocess.CompletedProcess([], 0,
+                                             f'diversion by libc6 from: {alias}\nlibc6:amd64: {alias}\n', '')
         with (patch.object(sbom.subprocess, 'run', side_effect=lambda args, **kwargs: found if args[-1].startswith('*/') else empty),
               patch.object(sbom, 'run', return_value='libc6:amd64\t2.43-1\tamd64\tinstalled')):
             self.assertEqual(sbom.native_package(str(target))['name'], 'libc6:amd64')
